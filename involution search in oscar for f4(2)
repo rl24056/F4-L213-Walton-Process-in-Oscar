@@ -1,0 +1,404 @@
+############################################################
+# F4(2) involution search from start
+############################################################
+
+TEST_ALL_F := false;;
+PRINT_EACH_T := true;;
+
+start_time := Runtime();;
+
+Print("======================================================\n");
+Print("SETUP: F4(2)\n");
+Print("======================================================\n");
+
+LoadPackage("atlasrep");;
+
+G := AtlasGroup("F4(2)");;
+
+if G = fail then
+    Error("AtlasGroup(\"F4(2)\") failed.");
+fi;
+
+Print("Order of G = ", Size(G), "\n");
+
+if Size(G) <> 3311126603366400 then
+    Error("This is not F4(2). Wrong group order.");
+fi;
+
+S := SylowSubgroup(G, 13);;
+Print("Order of Sylow 13-subgroup S = ", Size(S), "\n");
+
+g := GeneratorsOfGroup(S)[1];;
+
+if Order(g) <> 13 then
+    repeat
+        g := Random(S);
+    until Order(g) = 13;
+fi;
+
+Print("Order of g = ", Order(g), "\n");
+
+Cg := Centralizer(G, g);;
+CgS := Centralizer(G, S);;
+NgS := Normalizer(G, S);;
+
+Print("Order of C_G(g) = ", Size(Cg), "\n");
+Print("Order of C_G(S) = ", Size(CgS), "\n");
+Print("Order of N_G(S) = ", Size(NgS), "\n");
+Print("Index [N_G(S):C_G(S)] = ", Size(NgS) / Size(CgS), "\n");
+
+
+############################################################
+# Helper functions
+############################################################
+
+MultOrderMod13 := function(a)
+    local k;
+
+    if a mod 13 = 0 then
+        return 0;
+    fi;
+
+    for k in [1..12] do
+        if (a^k) mod 13 = 1 then
+            return k;
+        fi;
+    od;
+
+    return 0;
+end;;
+
+
+ActionExponent := function(x, g)
+    local a;
+
+    # Same convention as your Magma code:
+    # x*g*x^-1 = g^a
+    for a in [1..12] do
+        if x * g * x^-1 = g^a then
+            return a;
+        fi;
+    od;
+
+    return 0;
+end;;
+
+
+InvertsF := function(x, f)
+    return x * f * x^-1 = f^-1;
+end;;
+
+
+NormalisesGSubgroup := function(x, g)
+    return ActionExponent(x, g) <> 0;
+end;;
+
+
+MovesGOutsideItsOwn13Subgroup := function(x, g)
+    return ActionExponent(x, g) = 0;
+end;;
+
+
+IsPSL213 := function(H, Hstd)
+    local iso;
+
+    if Size(H) <> Size(Hstd) then
+        return false;
+    fi;
+
+    iso := IsomorphismGroups(H, Hstd);
+
+    return iso <> fail;
+end;;
+
+
+############################################################
+# STEP 1: Find suitable order-6 elements f in N_G(S)
+############################################################
+
+Print("======================================================\n");
+Print("STEP 1: FIND ORDER-6 ELEMENTS f WITH <g,f> = 13:6\n");
+Print("======================================================\n");
+
+NgSElems := Elements(NgS);;
+
+GoodFs := [];;
+GoodFData := [];;
+
+for x in NgSElems do
+
+    if Order(x) = 6 then
+
+        a := ActionExponent(x, g);
+
+        if a <> 0 and MultOrderMod13(a) = 6 then
+
+            B := Group(g, x);;
+
+            if Size(B) = 78 then
+                Add(GoodFs, x);
+                Add(GoodFData, [x, a, Size(B)]);
+            fi;
+
+        fi;
+
+    fi;
+
+od;
+
+Print("Number of suitable order-6 elements f = ", Length(GoodFs), "\n");
+
+ActionExps := Set(List(GoodFData, data -> data[2]));;
+
+Print("Action exponents found for x*g*x^-1 = g^a:\n");
+Print(ActionExps, "\n");
+
+for a in ActionExps do
+    Print("Exponent ", a, " has multiplicative order ", MultOrderMod13(a), " modulo 13\n");
+od;
+
+GoodFSubgroups := [];;
+GoodFGenerators := [];;
+
+for f in GoodFs do
+
+    Fsub := Group(f);;
+    already := false;;
+
+    for U in GoodFSubgroups do
+        if Fsub = U then
+            already := true;
+            break;
+        fi;
+    od;
+
+    if not already then
+        Add(GoodFSubgroups, Fsub);
+        Add(GoodFGenerators, f);
+    fi;
+
+od;
+
+Print("Number of distinct cyclic order-6 subgroups <f> = ", Length(GoodFSubgroups), "\n");
+
+if Length(GoodFs) = 0 then
+    Error("No suitable f found. Cannot continue.");
+fi;
+
+if TEST_ALL_F then
+    FsToTest := GoodFs;;
+else
+    FsToTest := [GoodFs[1]];;
+fi;
+
+Print("Number of f-elements selected for t-search = ", Length(FsToTest), "\n");
+
+Hstd := PSL(2,13);;
+OrderHstd := Size(Hstd);;
+
+Print("Order of PSL(2,13) = ", OrderHstd, "\n");
+
+
+############################################################
+# STEP 2: Involution search
+############################################################
+
+Print("======================================================\n");
+Print("STEP 2: SEARCH FOR INVOLUTIONS t\n");
+Print("======================================================\n");
+
+AllGoodTriples := [];;
+AllOrdersFound := [];;
+AllCandidateCounts := [];;
+AllNormalisingCandidateCounts := [];;
+
+TotalTested := 0;;
+TotalCandidates := 0;;
+TotalNormalisingCandidates := 0;;
+
+for fnumber in [1..Length(FsToTest)] do
+
+    f := FsToTest[fnumber];;
+    a := ActionExponent(f, g);;
+
+    B := Group(g, f);;
+    Fsub := Group(f);;
+
+    Print("------------------------------------------------------\n");
+    Print("Testing f number ", fnumber, "\n");
+    Print("Order of f = ", Order(f), "\n");
+    Print("Action exponent of f on <g> = ", a, "\n");
+    Print("Multiplicative order of exponent = ", MultOrderMod13(a), "\n");
+    Print("Order of <g,f> = ", Size(B), "\n");
+
+    Nf := Normalizer(G, Fsub);;
+
+    Print("Order of <f> = ", Size(Fsub), "\n");
+    Print("Order of N_G(<f>) = ", Size(Nf), "\n");
+
+    CandidateCountForThisF := 0;;
+    NormalisingCountForThisF := 0;;
+
+    OrdersFoundForThisF := [];;
+    IntersectionsFoundForThisF := [];;
+
+    for x in Enumerator(Nf) do
+
+        if Order(x) = 2 and InvertsF(x, f) then
+
+            if MovesGOutsideItsOwn13Subgroup(x, g) then
+
+                CandidateCountForThisF := CandidateCountForThisF + 1;;
+                TotalCandidates := TotalCandidates + 1;;
+                TotalTested := TotalTested + 1;;
+
+                t := x;;
+
+                gImage := t * g * t^-1;;
+                SImage := Group(gImage);;
+
+                H := Group(g, f, t);;
+                ordH := Size(H);;
+
+                AddSet(OrdersFoundForThisF, ordH);
+                AddSet(AllOrdersFound, ordH);
+                AddSet(IntersectionsFoundForThisF, Size(Intersection(S, SImage)));
+
+                if PRINT_EACH_T then
+                    Print("Candidate t number ", CandidateCountForThisF, "\n");
+                    Print("Order of t = ", Order(t), "\n");
+                    Print("t inverts f? ", InvertsF(t, f), "\n");
+                    Print("t normalises <g>? ", NormalisesGSubgroup(t, g), "\n");
+                    Print("Order of <t*g*t^-1> = ", Size(SImage), "\n");
+                    Print("<t*g*t^-1> equals <g>? ", SImage = S, "\n");
+                    Print("Order of <g> meet <t*g*t^-1> = ", Size(Intersection(S, SImage)), "\n");
+                    Print("Order of <g,f,t> = ", ordH, "\n");
+                fi;
+
+                if ordH = OrderHstd then
+
+                    Print("POSSIBLE GOOD t FOUND.\n");
+                    Print("Order of <g,f,t> = ", ordH, "\n");
+
+                    iso := IsPSL213(H, Hstd);;
+
+                    Print("IsIsomorphic(<g,f,t>, PSL(2,13)) = ", iso, "\n");
+
+                    if iso then
+                        Add(AllGoodTriples, [fnumber, CandidateCountForThisF, f, t, H]);
+                        Print("SUCCESS: This t gives PSL(2,13).\n");
+                    fi;
+
+                fi;
+
+            else
+
+                NormalisingCountForThisF := NormalisingCountForThisF + 1;;
+                TotalNormalisingCandidates := TotalNormalisingCandidates + 1;;
+
+            fi;
+
+        fi;
+
+    od;
+
+    Add(AllCandidateCounts, CandidateCountForThisF);
+    Add(AllNormalisingCandidateCounts, NormalisingCountForThisF);
+
+    Print("Number of candidate t not normalising <g> = ", CandidateCountForThisF, "\n");
+    Print("Number of inverting involutions still normalising <g> = ", NormalisingCountForThisF, "\n");
+
+    Print("Different orders of <g,f,t> found for this f:\n");
+    Print(OrdersFoundForThisF, "\n");
+
+    Print("Different intersection sizes |<g> meet <t*g*t^-1>| for this f:\n");
+    Print(IntersectionsFoundForThisF, "\n");
+
+od;
+
+
+############################################################
+# FINAL SUMMARY
+############################################################
+
+Print("======================================================\n");
+Print("FINAL SUMMARY\n");
+Print("======================================================\n");
+
+Print("Order of G = F4(2) = ", Size(G), "\n");
+Print("Order of g = ", Order(g), "\n");
+Print("Order of C_G(g) = ", Size(Cg), "\n");
+Print("Order of C_G(S) = ", Size(CgS), "\n");
+Print("Order of N_G(S) = ", Size(NgS), "\n");
+Print("Index [N_G(S):C_G(S)] = ", Size(NgS) / Size(CgS), "\n");
+
+Print("Number of suitable f-elements found = ", Length(GoodFs), "\n");
+Print("Number of distinct cyclic subgroups <f> found = ", Length(GoodFSubgroups), "\n");
+
+Print("Action exponents for suitable f-elements:\n");
+Print(ActionExps, "\n");
+
+Print("Number of f-elements tested = ", Length(FsToTest), "\n");
+
+Print("Candidate t counts for each f:\n");
+Print(AllCandidateCounts, "\n");
+
+Print("Normalising inverting-t counts for each f:\n");
+Print(AllNormalisingCandidateCounts, "\n");
+
+Print("Total candidate t tested = ", TotalTested, "\n");
+Print("Total non-normalising candidate t found = ", TotalCandidates, "\n");
+Print("Total normalising inverting t found = ", TotalNormalisingCandidates, "\n");
+
+Print("Different orders of <g,f,t> found overall:\n");
+Print(AllOrdersFound, "\n");
+
+Print("Number of good triples <g,f,t> giving PSL(2,13) = ", Length(AllGoodTriples), "\n");
+
+if Length(AllGoodTriples) > 0 then
+
+    data := AllGoodTriples[1];;
+
+    good_f_index := data[1];;
+    good_t_index := data[2];;
+    good_f := data[3];;
+    good_t := data[4];;
+    good_H := data[5];;
+
+    Print("------------------------------------------------------\n");
+    Print("FIRST GOOD TRIPLE\n");
+    Print("------------------------------------------------------\n");
+
+    Print("Good f index = ", good_f_index, "\n");
+    Print("Good t index = ", good_t_index, "\n");
+
+    Print("Order of good f = ", Order(good_f), "\n");
+    Print("Action exponent of good f on <g> = ", ActionExponent(good_f, g), "\n");
+    Print("Multiplicative order of exponent = ", MultOrderMod13(ActionExponent(good_f, g)), "\n");
+
+    Print("Order of good t = ", Order(good_t), "\n");
+    Print("good t inverts good f? ", InvertsF(good_t, good_f), "\n");
+    Print("good t normalises <g>? ", NormalisesGSubgroup(good_t, g), "\n");
+
+    gImage := good_t * g * good_t^-1;;
+    SImage := Group(gImage);;
+
+    Print("Order of <good_t*g*good_t^-1> = ", Size(SImage), "\n");
+    Print("<good_t*g*good_t^-1> equals <g>? ", SImage = S, "\n");
+    Print("Order of <g> meet <good_t*g*good_t^-1> = ", Size(Intersection(S, SImage)), "\n");
+
+    Print("Order of <g, good_f> = ", Size(Group(g, good_f)), "\n");
+    Print("Order of <g, good_f, good_t> = ", Size(good_H), "\n");
+    Print("IsIsomorphic(<g, good_f, good_t>, PSL(2,13)) = ", IsPSL213(good_H, Hstd), "\n");
+
+else
+
+    Print("No t satisfying the tested Weyl-type conditions gave PSL(2,13).\n");
+
+fi;
+
+Print("Runtime in milliseconds = ", Runtime() - start_time, "\n");
+
+Print("======================================================\n");
+Print("END\n");
+Print("======================================================\n");

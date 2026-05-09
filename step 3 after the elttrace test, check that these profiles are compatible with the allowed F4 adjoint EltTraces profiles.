@@ -1,0 +1,161 @@
+############################################################
+# NEXT STEP: Walton blueprint trace check using the unique survivor
+############################################################
+
+Print("\n============================================================\n");
+Print("NEXT STEP: WALTON BLUEPRINT TRACE CHECK\n");
+Print("============================================================\n");
+
+WT_ordmod13 := function(a)
+    local x,n;
+    if Gcd(a,13) <> 1 then
+        return 0;
+    fi;
+    x := a mod 13;
+    n := 1;
+    while x <> 1 do
+        x := (x*a) mod 13;
+        n := n + 1;
+    od;
+    return n;
+end;;
+
+WT_actexp := function(x,g)
+    local a;
+    for a in [1..12] do
+        if x*g*x^-1 = g^a then
+            return a;
+        fi;
+    od;
+    return 0;
+end;;
+
+WT_trace_by_order := function(n)
+    local positions, vals;
+    positions := HClassPositionsOfOrder(n);
+    if Length(positions) = 0 then
+        return fail;
+    fi;
+    vals := List(positions, i -> Survivors[1].char[i]);
+    if Length(Set(vals)) = 1 then
+        return vals[1];
+    else
+        return vals;
+    fi;
+end;;
+
+WT_profile_by_order := function(n)
+    local exps, profile, e, ordpower;
+    if n = 1 then
+        return [52];
+    fi;
+    exps := F4PowerExponentsForOrder(n);
+    profile := [];
+    for e in exps do
+        ordpower := n / Gcd(n,e);
+        Add(profile, WT_trace_by_order(ordpower));
+    od;
+    return profile;
+end;;
+
+WT_check := function(name,x)
+    local n, prof;
+    n := Order(x);
+    prof := WT_profile_by_order(n);
+    Print("\n", name, "\n");
+    Print("order = ", n, "\n");
+    Print("trace profile under survivor 2*12 + 2*14b = ", prof, "\n");
+    if n in [2,3,6,13] then
+        if prof in F4AllowedAdjointProfiles(n) then
+            Print("F4 trace-profile check = PASS\n");
+        else
+            Print("F4 trace-profile check = FAIL\n");
+        fi;
+    else
+        Print("No F4 comparison needed for this order in the current filter.\n");
+    fi;
+end;;
+
+Print("\nBuilding abstract PSL2(13)...\n");
+
+WT_H := PSL(2,13);;
+WT_S := SylowSubgroup(WT_H,13);;
+WT_g := GeneratorsOfGroup(WT_S)[1];;
+
+if Order(WT_g) <> 13 then
+    repeat
+        WT_g := Random(WT_S);
+    until Order(WT_g) = 13;
+fi;
+
+WT_N := Normalizer(WT_H,WT_S);;
+WT_GoodFs := [];;
+
+for x in Elements(WT_N) do
+    if Order(x) = 6 then
+        WT_a := WT_actexp(x,WT_g);
+        if WT_a <> 0 and WT_ordmod13(WT_a) = 6 and Size(Group(WT_g,x)) = 78 then
+            Add(WT_GoodFs,[x,WT_a]);
+        fi;
+    fi;
+od;
+
+WT_f := WT_GoodFs[1][1];;
+WT_a := WT_GoodFs[1][2];;
+WT_B := Group(WT_g,WT_f);;
+WT_Belts := Elements(WT_B);;
+
+Print("Order of H = ", Size(WT_H), "\n");
+Print("Order of <g> = ", Order(WT_g), "\n");
+Print("Order of N_H(<g>) = ", Size(WT_N), "\n");
+Print("Number of suitable f-elements = ", Length(WT_GoodFs), "\n");
+Print("Order of f = ", Order(WT_f), "\n");
+Print("Action exponent of f on <g> = ", WT_a, "\n");
+Print("Order of <g,f> = ", Size(WT_B), "\n");
+
+Print("\nFinding Bruhat-type involution t...\n");
+
+WT_GoodTs := [];;
+
+for t0 in Elements(WT_H) do
+    if Order(t0) = 2 and Size(Group(WT_g,WT_f,t0)) = Size(WT_H) then
+        for b0 in WT_Belts do
+            if Order(b0*t0) = 3 then
+                Add(WT_GoodTs,[t0,b0]);
+                break;
+            fi;
+        od;
+    fi;
+od;
+
+WT_t := WT_GoodTs[1][1];;
+WT_b := WT_GoodTs[1][2];;
+
+Print("Number of Bruhat-style t candidates = ", Length(WT_GoodTs), "\n");
+Print("Order of t = ", Order(WT_t), "\n");
+Print("Order of b*t = ", Order(WT_b*WT_t), "\n");
+Print("Order of <g,f,t> = ", Size(Group(WT_g,WT_f,WT_t)), "\n");
+
+Print("\nChecking trace profiles of Walton elements:\n");
+
+WT_check("g: order-13 Sylow generator", WT_g);
+WT_check("f: order-6 complement in 13:6", WT_f);
+WT_check("f^2: order-3 element inside <f>", WT_f^2);
+WT_check("f^3: order-2 involution inside <f>", WT_f^3);
+WT_check("t: Bruhat-type involution", WT_t);
+WT_check("b*t: order-3 Bruhat relation element", WT_b*WT_t);
+
+Print("\n============================================================\n");
+Print("WALTON BLUEPRINT TRACE CHECK SUMMARY\n");
+Print("============================================================\n");
+Print("Unique survivor from previous filter = ", Survivors[1].desc, "\n");
+Print("Brauer values = ", Survivors[1].char, "\n");
+Print("Order of <g,f> = ", Size(WT_B), "\n");
+Print("Order of <g,f,t> = ", Size(Group(WT_g,WT_f,WT_t)), "\n");
+Print("Order of b*t = ", Order(WT_b*WT_t), "\n");
+Print("Main expected profiles:\n");
+Print("g profile should be [0]\n");
+Print("f profile should be [-4,-2,2]\n");
+Print("t profile should be [-4] or [20]\n");
+Print("b*t profile should be [-2] or [7]\n");
+Print("DONE WALTON BLUEPRINT TRACE CHECK.\n");

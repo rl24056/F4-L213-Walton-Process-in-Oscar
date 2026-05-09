@@ -1,0 +1,394 @@
+cat > /home/runqi/F4_L213_char7_EltTraces_HARDCODED_FILTER.g <<'EOF'
+############################################################
+# F4 / PSL2(13), characteristic 7
+# Short hard-coded F4 EltTraces comparison filter
+#
+# Purpose:
+# 1. Rebuild PSL2(13) characteristic-7 Brauer table.
+# 2. Rebuild the six no-trivial 52-dimensional candidates.
+# 3. Compare their trace profiles with F4 adjoint Moody-Patera
+#    trace profiles for orders 2, 3, 6, and 13.
+#
+# This avoids the previous InverseMat problem.
+# It does NOT construct F4(7).
+############################################################
+
+LoadPackage("ctbllib");;
+
+Print("\n============================================================\n");
+Print("F4 / PSL2(13) CHAR 7 HARD-CODED ELTTRACES FILTER\n");
+Print("============================================================\n");
+
+
+############################################################
+# Basic helpers
+############################################################
+
+F4Line := function()
+    Print("------------------------------------------------------------\n");
+end;;
+
+F4PowerExponentsForOrder := function(n)
+    local divs;
+    divs := Filtered(DivisorsInt(n), d -> d > 1);
+    return List(divs, d -> n / d);
+end;;
+
+
+############################################################
+# F4 adjoint Moody-Patera trace profiles
+############################################################
+
+# Ordering convention:
+# For order n, profile is:
+#   [ trace(x^(n/d)) : d in Divisors(n), d > 1 ]
+#
+# So:
+# order 2 profile = [trace(x)]
+# order 3 profile = [trace(x)]
+# order 6 profile = [trace(x^3), trace(x^2), trace(x)]
+# order 13 profile = [trace(x)]
+#
+# These are the F4 adjoint trace profiles from the
+# Moody-Patera / Kac-coordinate computation.
+
+F4AllowedAdjointProfiles := function(n)
+
+    if n = 2 then
+
+        return [
+            [-4],
+            [20]
+        ];
+
+    elif n = 3 then
+
+        return [
+            [-2],
+            [7]
+        ];
+
+    elif n = 6 then
+
+        return [
+            [-4, -2, 2],
+            [-4, -2, 14],
+            [-4, 7, -1],
+            [-4, 7, 5],
+            [-4, 7, 11],
+            [-4, 7, 35],
+            [20, -2, 2],
+            [20, 7, -1],
+            [20, 7, 5],
+            [20, 7, 23]
+        ];
+
+    elif n = 13 then
+
+        # This only checks trace zero.
+        # Your previous full Kac/eigenvalue calculation singled out
+        # the special trace-zero Kac coordinate [1,1,1,1,2].
+        return [
+            [0]
+        ];
+
+    else
+
+        Error("No hard-coded F4 adjoint profiles for order ", n);
+
+    fi;
+
+end;;
+
+
+Print("\nF4 allowed adjoint profiles used in this script:\n");
+Print("Order 2: ", F4AllowedAdjointProfiles(2), "\n");
+Print("Order 3: ", F4AllowedAdjointProfiles(3), "\n");
+Print("Order 6: ", F4AllowedAdjointProfiles(6), "\n");
+Print("Order 13: ", F4AllowedAdjointProfiles(13), "\n");
+F4Line();
+
+
+############################################################
+# Load PSL2(13) Brauer table in characteristic 7
+############################################################
+
+Print("\nLoading PSL2(13) Brauer table in characteristic 7...\n");
+
+tbl := CharacterTable("L2(13)");;
+
+if tbl = fail then
+    tbl := CharacterTable("PSL(2,13)");
+fi;
+
+if tbl = fail then
+    Error("Could not load character table for L2(13).");
+fi;
+
+btbl := BrauerTable(tbl, 7);;
+
+if btbl = fail then
+    Error("Could not load Brauer table for L2(13) in characteristic 7.");
+fi;
+
+irr := Irr(btbl);;
+orders := OrdersClassRepresentatives(btbl);;
+degrees := List(irr, chi -> chi[1]);;
+
+labels := ["1", "7a", "7b", "12", "14a", "14b"];;
+
+Print("Brauer irreducible degrees = ", degrees, "\n");
+Print("Brauer table class orders = ", orders, "\n");
+Print("Class order positions are [1,2,3,6,13,13].\n");
+F4Line();
+
+
+############################################################
+# Character helpers
+############################################################
+
+ZeroChar := function()
+    return List([1..Length(irr[1])], i -> 0);
+end;;
+
+CharFromCoeffs := function(coeffs)
+    local result, i, j;
+
+    result := ZeroChar();
+
+    for i in [1..Length(coeffs)] do
+        for j in [1..Length(result)] do
+            result[j] := result[j] + coeffs[i] * irr[i][j];
+        od;
+    od;
+
+    return result;
+end;;
+
+PrintDecomposition := function(coeffs)
+    local i, first;
+
+    first := true;
+
+    for i in [1..Length(coeffs)] do
+
+        if coeffs[i] <> 0 then
+
+            if first = false then
+                Print(" + ");
+            fi;
+
+            if coeffs[i] = 1 then
+                Print(labels[i]);
+            else
+                Print(coeffs[i], "*", labels[i]);
+            fi;
+
+            first := false;
+
+        fi;
+
+    od;
+
+    if first = true then
+        Print("0");
+    fi;
+
+    Print("\n");
+end;;
+
+HClassPositionsOfOrder := function(n)
+    return Filtered([1..Length(orders)], i -> orders[i] = n);
+end;;
+
+HPowerTraceProfile := function(chi, classpos)
+    local n, exps, profile, e, pm;
+
+    n := orders[classpos];
+    exps := F4PowerExponentsForOrder(n);
+    profile := [];
+
+    for e in exps do
+
+        pm := PowerMap(btbl, e);
+
+        if pm[classpos] = fail then
+            Error("Power map failed at class ", classpos,
+                  " and exponent ", e);
+        fi;
+
+        Add(profile, chi[pm[classpos]]);
+
+    od;
+
+    return profile;
+end;;
+
+
+############################################################
+# The six no-trivial 52-dimensional candidates
+############################################################
+
+Candidates52 := [
+    rec(
+        name := "Candidate 1",
+        coeffs := [0,0,0,2,0,2],
+        desc := "2*12 + 2*14b"
+    ),
+    rec(
+        name := "Candidate 2",
+        coeffs := [0,0,0,2,1,1],
+        desc := "2*12 + 14a + 14b"
+    ),
+    rec(
+        name := "Candidate 3",
+        coeffs := [0,0,0,2,2,0],
+        desc := "2*12 + 2*14a"
+    ),
+    rec(
+        name := "Candidate 4",
+        coeffs := [0,1,1,2,0,1],
+        desc := "7a + 7b + 2*12 + 14b"
+    ),
+    rec(
+        name := "Candidate 5",
+        coeffs := [0,1,1,2,1,0],
+        desc := "7a + 7b + 2*12 + 14a"
+    ),
+    rec(
+        name := "Candidate 6",
+        coeffs := [0,2,2,2,0,0],
+        desc := "2*7a + 2*7b + 2*12"
+    )
+];;
+
+Print("\nThe six candidates are:\n");
+
+for c in Candidates52 do
+
+    c.char := CharFromCoeffs(c.coeffs);
+
+    Print(c.name, ": ", c.desc, "\n");
+    Print("coefficients = ", c.coeffs, "\n");
+    Print("Brauer character values on [1,2,3,6,13,13] = ", c.char, "\n");
+    Print("decomposition = ");
+    PrintDecomposition(c.coeffs);
+    F4Line();
+
+od;
+
+
+############################################################
+# Candidate comparison
+############################################################
+
+CompareCandidateOnOrder := function(c, n)
+    local classPositions, pos, profile, allowed, allGood;
+
+    classPositions := HClassPositionsOfOrder(n);
+    allowed := F4AllowedAdjointProfiles(n);
+    allGood := true;
+
+    if Length(classPositions) = 0 then
+        Print("No class of order ", n, " in this Brauer table.\n");
+        return false;
+    fi;
+
+    Print("\n", c.name, " on order ", n, ":\n");
+
+    for pos in classPositions do
+
+        profile := HPowerTraceProfile(c.char, pos);
+
+        Print("  H class position ", pos,
+              " profile = ", profile, "\n");
+
+        if profile in allowed then
+            Print("  PASS: this profile occurs in F4 adjoint EltTraces.\n");
+        else
+            Print("  FAIL: this profile does NOT occur in F4 adjoint EltTraces.\n");
+            allGood := false;
+        fi;
+
+    od;
+
+    return allGood;
+end;;
+
+OrdersForComparison := [2,3,6,13];;
+Survivors := [];;
+
+Print("\n============================================================\n");
+Print("RUNNING ELTTRACES FILTER\n");
+Print("============================================================\n");
+
+for c in Candidates52 do
+
+    c.goodOrders := [];
+    c.badOrders := [];
+
+    Print("\n############################################################\n");
+    Print("Testing ", c.name, ": ", c.desc, "\n");
+    Print("############################################################\n");
+
+    for n in OrdersForComparison do
+
+        if CompareCandidateOnOrder(c, n) then
+            Add(c.goodOrders, n);
+        else
+            Add(c.badOrders, n);
+        fi;
+
+    od;
+
+    if Length(c.badOrders) = 0 then
+
+        Add(Survivors, c);
+
+        Print("\nRESULT: ", c.name,
+              " SURVIVES all tested orders ",
+              OrdersForComparison, ".\n");
+
+    else
+
+        Print("\nRESULT: ", c.name,
+              " is eliminated by order(s) ",
+              c.badOrders, ".\n");
+
+    fi;
+
+od;
+
+
+############################################################
+# Final summary
+############################################################
+
+Print("\n============================================================\n");
+Print("FINAL SUMMARY\n");
+Print("============================================================\n");
+
+Print("Orders tested = ", OrdersForComparison, "\n");
+Print("Number of survivors = ", Length(Survivors), "\n");
+
+for c in Survivors do
+
+    Print("\nSURVIVOR:\n");
+    Print(c.name, ": ", c.desc, "\n");
+    Print("coefficients [1,7a,7b,12,14a,14b] = ", c.coeffs, "\n");
+    Print("Brauer character values on [1,2,3,6,13,13] = ", c.char, "\n");
+    Print("decomposition = ");
+    PrintDecomposition(c.coeffs);
+
+od;
+
+Print("\nExpected conclusion:\n");
+Print("The unique survivor should be Candidate 1 = 2*12 + 2*14b.\n");
+Print("Its trace values are [52, -4, -2, 2, 0, 0].\n");
+Print("This matches F4 adjoint traces on orders 2, 3, 6, and 13.\n");
+
+Print("\nDONE.\n");
+
+F4L213_char7_HardcodedEltTrace_Candidates52 := Candidates52;;
+F4L213_char7_HardcodedEltTrace_Survivors := Survivors;;
+EOF

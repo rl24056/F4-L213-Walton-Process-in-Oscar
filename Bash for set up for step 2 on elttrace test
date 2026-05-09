@@ -1,0 +1,729 @@
+cat > /home/runqi/F4_L213_char7_EltTraces_MoodyPatera_candidate_filter_FIXED.g <<'EOF'
+############################################################
+# F4 / PSL2(13), characteristic 7
+# Fixed EltTraces / Moody-Patera comparison stage
+#
+# Filename:
+# F4_L213_char7_EltTraces_MoodyPatera_candidate_filter_FIXED.g
+#
+# Purpose:
+# 1. Build F4 Moody-Patera / Kac-coordinate trace records.
+# 2. Check the F4 adjoint trace profiles for orders 2, 3, 6, 13.
+# 3. Rebuild the PSL2(13) characteristic-7 Brauer table.
+# 4. Test the six no-trivial 52-dimensional candidates.
+# 5. Identify which candidate survives the F4 adjoint trace filter.
+#
+# Important:
+# This does NOT construct F4(7).
+# This is only the trace/Kac-coordinate comparison stage.
+############################################################
+
+
+############################################################
+# Package loading
+############################################################
+
+LoadPackage("ctbllib");;
+
+
+############################################################
+# Basic printing helpers
+############################################################
+
+F4Line := function()
+    Print("------------------------------------------------------------\n");
+end;;
+
+
+F4Header := function(s)
+    Print("\n");
+    Print("============================================================\n");
+    Print(s, "\n");
+    Print("============================================================\n");
+end;;
+
+
+############################################################
+# PART 1:
+# F4 Cartan data and Weyl orbit helpers
+############################################################
+
+F4CartanMatrix := function()
+    return [
+        [ 2, -1,  0,  0 ],
+        [ -1, 2, -2,  0 ],
+        [ 0, -1,  2, -1 ],
+        [ 0,  0, -1,  2 ]
+    ];
+end;;
+
+
+# Inverse of the above F4 Cartan matrix.
+# Hard-coded because your GAP/OSCAR session did not recognise InverseMat.
+F4InverseCartanMatrix := function()
+    return [
+        [2, 3, 4, 2],
+        [3, 6, 8, 4],
+        [2, 4, 6, 3],
+        [1, 2, 3, 2]
+    ];
+end;;
+
+
+F4GcdList := function(L)
+    local g, x;
+
+    g := 0;
+
+    for x in L do
+        g := Gcd(g, AbsInt(x));
+    od;
+
+    return g;
+end;;
+
+
+F4RowTimesMatrix := function(v, M)
+    local out, j, k, s;
+
+    out := [];
+
+    for k in [1..Length(M[1])] do
+        s := 0;
+
+        for j in [1..Length(v)] do
+            s := s + v[j] * M[j][k];
+        od;
+
+        Add(out, s);
+    od;
+
+    return out;
+end;;
+
+
+F4ReflectWeight := function(w, i)
+    local A, out, j;
+
+    A := F4CartanMatrix();
+    out := ShallowCopy(w);
+
+    # w is written in the fundamental-weight basis.
+    # Simple reflection s_i acts by w -> w - w_i * alpha_i.
+    # Row i of the Cartan matrix gives alpha_i in this basis.
+    for j in [1..4] do
+        out[j] := out[j] - w[i] * A[i][j];
+    od;
+
+    return out;
+end;;
+
+
+F4WeightOrbit := function(highestWeight)
+    local orbit, queue, w, i, v;
+
+    orbit := [highestWeight];
+    queue := [highestWeight];
+
+    while Length(queue) > 0 do
+
+        w := queue[1];
+        Remove(queue, 1);
+
+        for i in [1..4] do
+
+            v := F4ReflectWeight(w, i);
+
+            if not (v in orbit) then
+                Add(orbit, v);
+                Add(queue, v);
+            fi;
+
+        od;
+
+    od;
+
+    return orbit;
+end;;
+
+
+F4ConvertOrbitToRootCoordinates := function(orbit)
+    local invA, converted, w;
+
+    invA := F4InverseCartanMatrix();
+    converted := [];
+
+    for w in orbit do
+        Add(converted, F4RowTimesMatrix(w, invA));
+    od;
+
+    return converted;
+end;;
+
+
+############################################################
+# PART 2:
+# Kac tuples and trace functions
+############################################################
+
+F4KacTuples := function(n)
+    local tuples, c1, c2, c3, c4, c0, C;
+
+    tuples := [];
+
+    # F4 affine marks are [2,3,4,2,1].
+    # Tuple is [c1,c2,c3,c4,c0].
+    # Condition: 2c1 + 3c2 + 4c3 + 2c4 + c0 = n.
+    for c1 in [0..QuoInt(n,2)] do
+        for c2 in [0..QuoInt(n,3)] do
+            for c3 in [0..QuoInt(n,4)] do
+                for c4 in [0..QuoInt(n,2)] do
+
+                    c0 := n - 2*c1 - 3*c2 - 4*c3 - 2*c4;
+
+                    if c0 >= 0 then
+
+                        C := [c1,c2,c3,c4,c0];
+
+                        if F4GcdList(C) = 1 then
+                            Add(tuples, C);
+                        fi;
+
+                    fi;
+
+                od;
+            od;
+        od;
+    od;
+
+    return tuples;
+end;;
+
+
+F4PowerExponentsForOrder := function(n)
+    local divs;
+
+    # Same ordering as the Magma code:
+    # [n div j : j in Divisors(n) | j not 1]
+    divs := Filtered(DivisorsInt(n), d -> d > 1);
+
+    return List(divs, d -> n / d);
+end;;
+
+
+F4WeightExponent := function(C, rootCoord)
+    local s, i;
+
+    s := 0;
+
+    for i in [1..4] do
+        s := s + C[i] * rootCoord[i];
+    od;
+
+    return s;
+end;;
+
+
+F4TraceOnOrbit := function(C, orbitRootCoords, zeroMultiplicity, n, e)
+    local zeta, total, w, exp;
+
+    zeta := E(n);
+    total := zeroMultiplicity;
+
+    for w in orbitRootCoords do
+        exp := F4WeightExponent(C, w);
+        total := total + zeta^((e * exp) mod n);
+    od;
+
+    return total;
+end;;
+
+
+############################################################
+# PART 3:
+# Build F4 minimal and adjoint trace records
+############################################################
+
+F4Header("PART 1: BUILD F4 TRACE RECORDS");
+
+F4OrbitOmega4 := F4WeightOrbit([0,0,0,1]);;
+F4OrbitOmega1 := F4WeightOrbit([1,0,0,0]);;
+
+Print("Size of Weyl orbit of omega4 = ", Length(F4OrbitOmega4), "\n");
+Print("Size of Weyl orbit of omega1 = ", Length(F4OrbitOmega1), "\n");
+
+F4OrbitOmega4Root := F4ConvertOrbitToRootCoordinates(F4OrbitOmega4);;
+F4OrbitOmega1Root := F4ConvertOrbitToRootCoordinates(F4OrbitOmega1);;
+
+Print("Minimal module dimension check: 2 + orbit(omega4) = ",
+      2 + Length(F4OrbitOmega4), "\n");
+
+Print("Adjoint module dimension check: 4 + orbit(omega4) + orbit(omega1) = ",
+      4 + Length(F4OrbitOmega4) + Length(F4OrbitOmega1), "\n");
+
+
+F4TraceRecordForKac := function(C, n)
+    local exps, minProfile, adjProfile, e, minTrace, adjTrace;
+
+    exps := F4PowerExponentsForOrder(n);
+
+    minProfile := [];
+    adjProfile := [];
+
+    for e in exps do
+
+        # Minimal 26-dimensional F4 module:
+        # 2 zero weights + orbit(omega4).
+        minTrace := F4TraceOnOrbit(C, F4OrbitOmega4Root, 2, n, e);
+
+        # Adjoint 52-dimensional F4 module:
+        # 4 zero weights + orbit(omega4) + orbit(omega1).
+        adjTrace :=
+            F4TraceOnOrbit(C, F4OrbitOmega4Root, 4, n, e)
+            + F4TraceOnOrbit(C, F4OrbitOmega1Root, 0, n, e);
+
+        Add(minProfile, minTrace);
+        Add(adjProfile, adjTrace);
+
+    od;
+
+    return rec(
+        kac := C,
+        min := minProfile,
+        adj := adjProfile
+    );
+end;;
+
+
+F4TraceRecords := function(n)
+    local records, C;
+
+    records := [];
+
+    for C in F4KacTuples(n) do
+        Add(records, F4TraceRecordForKac(C, n));
+    od;
+
+    return records;
+end;;
+
+
+F4ProfileList := function(records, fieldname)
+    local profiles, r, p;
+
+    profiles := [];
+
+    for r in records do
+
+        if fieldname = "min" then
+            p := r.min;
+        elif fieldname = "adj" then
+            p := r.adj;
+        else
+            Error("fieldname must be min or adj");
+        fi;
+
+        if not (p in profiles) then
+            Add(profiles, p);
+        fi;
+
+    od;
+
+    return profiles;
+end;;
+
+
+F4MatchingRecords := function(records, fieldname, target)
+    local matches, r, p;
+
+    matches := [];
+
+    for r in records do
+
+        if fieldname = "min" then
+            p := r.min;
+        elif fieldname = "adj" then
+            p := r.adj;
+        else
+            Error("fieldname must be min or adj");
+        fi;
+
+        if p = target then
+            Add(matches, r);
+        fi;
+
+    od;
+
+    return matches;
+end;;
+
+
+############################################################
+# PART 4:
+# Moody-Patera count checks
+############################################################
+
+F4Header("PART 2: MOODY-PATERA COUNT CHECKS");
+
+F4OrdersToBuild := [2,3,6,7,13,14];;
+F4RecordsByOrder := [];;
+
+for n in F4OrdersToBuild do
+
+    F4RecordsByOrder[n] := F4TraceRecords(n);
+
+    Print("Order ", n,
+          ": number of Kac tuples / F4 semisimple classes = ",
+          Length(F4RecordsByOrder[n]), "\n");
+
+od;
+
+Print("\nExpected Magma counts:\n");
+Print("orders 2,3,6,7,13,14 should give 2,3,11,20,104,113.\n");
+
+F4Line();
+
+for n in [2,3,6] do
+    Print("\nOrder ", n, " distinct F4 adjoint trace profiles:\n");
+    Print(F4ProfileList(F4RecordsByOrder[n], "adj"), "\n");
+od;
+
+
+############################################################
+# PART 5:
+# Order-13 trace-zero Kac coordinate check
+############################################################
+
+F4Header("PART 3: ORDER-13 TRACE-ZERO KAC COORDINATE");
+
+F4Order13TraceZeroMatches :=
+    F4MatchingRecords(F4RecordsByOrder[13], "adj", [0]);;
+
+Print("Number of order-13 F4 adjoint trace-zero records = ",
+      Length(F4Order13TraceZeroMatches), "\n");
+
+for r in F4Order13TraceZeroMatches do
+
+    Print("Kac coordinate = ", r.kac,
+          " ; adjoint trace profile = ", r.adj, "\n");
+
+    if 0 in r.kac then
+        Print("This Kac coordinate has a zero entry.\n");
+    else
+        Print("This Kac coordinate has no zero entry, so the connected centraliser is toral.\n");
+    fi;
+
+od;
+
+
+############################################################
+# PART 6:
+# PSL2(13) Brauer table in characteristic 7
+############################################################
+
+F4Header("PART 4: PSL2(13) CHARACTERISTIC-7 BRAUER TABLE");
+
+tbl := CharacterTable("L2(13)");;
+
+if tbl = fail then
+    tbl := CharacterTable("PSL(2,13)");
+fi;
+
+if tbl = fail then
+    Error("Could not load character table for L2(13).");
+fi;
+
+btbl := BrauerTable(tbl, 7);;
+
+if btbl = fail then
+    Error("Could not load Brauer table for L2(13) in characteristic 7.");
+fi;
+
+irr := Irr(btbl);;
+orders := OrdersClassRepresentatives(btbl);;
+degrees := List(irr, chi -> chi[1]);;
+
+labels := ["1", "7a", "7b", "12", "14a", "14b"];;
+
+Print("Brauer irreducible degrees = ", degrees, "\n");
+Print("Brauer table class orders = ", orders, "\n");
+
+Print("\nCharacteristic 7 means only 7-regular classes are visible.\n");
+Print("So the PSL2(13) Brauer table gives orders 1, 2, 3, 6, 13, 13.\n");
+
+
+############################################################
+# Character helpers
+############################################################
+
+ZeroChar := function()
+    return List([1..Length(irr[1])], i -> 0);
+end;;
+
+
+CharFromCoeffs := function(coeffs)
+    local result, i, j;
+
+    result := ZeroChar();
+
+    for i in [1..Length(coeffs)] do
+        for j in [1..Length(result)] do
+            result[j] := result[j] + coeffs[i] * irr[i][j];
+        od;
+    od;
+
+    return result;
+end;;
+
+
+PrintDecomposition := function(coeffs)
+    local i, first;
+
+    first := true;
+
+    for i in [1..Length(coeffs)] do
+
+        if coeffs[i] <> 0 then
+
+            if first = false then
+                Print(" + ");
+            fi;
+
+            if coeffs[i] = 1 then
+                Print(labels[i]);
+            else
+                Print(coeffs[i], "*", labels[i]);
+            fi;
+
+            first := false;
+
+        fi;
+
+    od;
+
+    if first = true then
+        Print("0");
+    fi;
+
+    Print("\n");
+end;;
+
+
+HClassPositionsOfOrder := function(n)
+    return Filtered([1..Length(orders)], i -> orders[i] = n);
+end;;
+
+
+HPowerTraceProfile := function(chi, classpos)
+    local n, exps, profile, e, pm;
+
+    n := orders[classpos];
+    exps := F4PowerExponentsForOrder(n);
+    profile := [];
+
+    for e in exps do
+
+        pm := PowerMap(btbl, e);
+
+        if pm[classpos] = fail then
+            Error("Power map failed for class position ", classpos,
+                  " and exponent ", e);
+        fi;
+
+        Add(profile, chi[pm[classpos]]);
+
+    od;
+
+    return profile;
+end;;
+
+
+############################################################
+# PART 7:
+# Hard-code the six no-trivial 52-dimensional candidates
+############################################################
+
+F4Header("PART 5: SIX NO-TRIVIAL TRACE-ZERO 52-DIMENSIONAL CANDIDATES");
+
+Candidates52 := [
+    rec(
+        name := "Candidate 1",
+        coeffs := [0,0,0,2,0,2],
+        desc := "2*12 + 2*14b"
+    ),
+    rec(
+        name := "Candidate 2",
+        coeffs := [0,0,0,2,1,1],
+        desc := "2*12 + 14a + 14b"
+    ),
+    rec(
+        name := "Candidate 3",
+        coeffs := [0,0,0,2,2,0],
+        desc := "2*12 + 2*14a"
+    ),
+    rec(
+        name := "Candidate 4",
+        coeffs := [0,1,1,2,0,1],
+        desc := "7a + 7b + 2*12 + 14b"
+    ),
+    rec(
+        name := "Candidate 5",
+        coeffs := [0,1,1,2,1,0],
+        desc := "7a + 7b + 2*12 + 14a"
+    ),
+    rec(
+        name := "Candidate 6",
+        coeffs := [0,2,2,2,0,0],
+        desc := "2*7a + 2*7b + 2*12"
+    )
+];;
+
+for c in Candidates52 do
+
+    c.char := CharFromCoeffs(c.coeffs);
+
+    Print(c.name, ": ", c.desc, "\n");
+    Print("coefficients [1,7a,7b,12,14a,14b] = ", c.coeffs, "\n");
+    Print("Brauer character values on [1,2,3,6,13,13] = ", c.char, "\n");
+    Print("decomposition = ");
+    PrintDecomposition(c.coeffs);
+    F4Line();
+
+od;
+
+
+############################################################
+# PART 8:
+# Compare candidates with F4 adjoint trace profiles
+############################################################
+
+F4Header("PART 6: ELTTRACES COMPARISON WITH F4 ADJOINT PROFILES");
+
+CompareCandidateOnOrder := function(c, n)
+    local classPositions, pos, profile, matches, allGood, r;
+
+    classPositions := HClassPositionsOfOrder(n);
+    allGood := true;
+
+    if Length(classPositions) = 0 then
+        Print("No Brauer class of order ", n, " exists in characteristic 7.\n");
+        return false;
+    fi;
+
+    Print("\n", c.name, " on order ", n, " classes:\n");
+
+    for pos in classPositions do
+
+        profile := HPowerTraceProfile(c.char, pos);
+        matches := F4MatchingRecords(F4RecordsByOrder[n], "adj", profile);
+
+        Print("  H class position ", pos,
+              " power trace profile = ", profile, "\n");
+
+        if Length(matches) > 0 then
+
+            Print("  MATCHES F4 adjoint profile. Matching Kac coordinates:\n");
+
+            for r in matches do
+                Print("    ", r.kac, "\n");
+            od;
+
+        else
+
+            Print("  DOES NOT MATCH any F4 adjoint profile of order ", n, ".\n");
+            allGood := false;
+
+        fi;
+
+    od;
+
+    return allGood;
+end;;
+
+
+OrdersForComparison := [2,3,6,13];;
+Survivors := [];;
+
+for c in Candidates52 do
+
+    c.goodOrders := [];
+    c.badOrders := [];
+
+    Print("\n");
+    Print("############################################################\n");
+    Print("Testing ", c.name, ": ", c.desc, "\n");
+    Print("############################################################\n");
+
+    for n in OrdersForComparison do
+
+        if CompareCandidateOnOrder(c, n) then
+            Add(c.goodOrders, n);
+        else
+            Add(c.badOrders, n);
+        fi;
+
+    od;
+
+    if Length(c.badOrders) = 0 then
+
+        Add(Survivors, c);
+
+        Print("\nRESULT FOR ", c.name, ": SURVIVES all tested orders ",
+              OrdersForComparison, ".\n");
+
+    else
+
+        Print("\nRESULT FOR ", c.name, ": eliminated by orders ",
+              c.badOrders, ".\n");
+
+    fi;
+
+od;
+
+
+############################################################
+# PART 9:
+# Clean final summary
+############################################################
+
+F4Header("PART 7: FINAL SUMMARY");
+
+Print("Orders tested against F4 adjoint EltTraces data: ",
+      OrdersForComparison, "\n");
+
+Print("\nNumber of surviving candidates = ", Length(Survivors), "\n");
+
+for c in Survivors do
+
+    Print("\nSURVIVOR:\n");
+    Print(c.name, ": ", c.desc, "\n");
+    Print("coefficients [1,7a,7b,12,14a,14b] = ", c.coeffs, "\n");
+    Print("Brauer character values on [1,2,3,6,13,13] = ", c.char, "\n");
+    Print("decomposition = ");
+    PrintDecomposition(c.coeffs);
+
+od;
+
+Print("\nInterpretation guide:\n");
+Print("Order 2 tests involution trace compatibility with F4.\n");
+Print("Order 3 tests order-3 trace compatibility with F4.\n");
+Print("Order 6 tests the full power profile [x^3, x^2, x].\n");
+Print("Order 13 checks the trace-zero Kac coordinate, expected [1,1,1,1,2].\n");
+
+Print("\nIf there is a unique survivor, that is the best current candidate for L(F4) restricted to PSL2(13) in characteristic 7.\n");
+
+Print("\n============================================================\n");
+Print("DONE: F4 / L2(13) CHAR 7 FIXED ELTTRACES COMPARISON\n");
+Print("============================================================\n");
+
+
+############################################################
+# PART 10:
+# Store useful global objects
+############################################################
+
+F4L213_char7_EltTrace_Candidates52 := Candidates52;;
+F4L213_char7_EltTrace_Survivors := Survivors;;
+F4L213_F4RecordsByOrder := F4RecordsByOrder;;
+F4L213_F4Order13TraceZeroMatches := F4Order13TraceZeroMatches;;
+EOF

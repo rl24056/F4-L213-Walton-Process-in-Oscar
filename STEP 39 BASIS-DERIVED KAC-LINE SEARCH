@@ -1,0 +1,1998 @@
+############################################################
+# FULL SCRIPT:
+#
+#   STEP 38B
+#   STEP 39
+#   STEP 39B
+#   STEP 39B REPAIR
+#
+# Paste this at gap> after:
+#
+#   using Oscar
+#   GAP.prompt()
+#
+# Purpose:
+#   Continue the F4(7) / L2(13) Walton-style search.
+#
+# Main objects:
+#   g of order 13
+#   f of order 6
+#   B = <g,f> of order 78, shape 13:6
+#   t an external involution candidate with:
+#       t^2 = 1
+#       f^t = f^-1
+#       Trace(t) = -4 on L(F4)
+#       t not in B
+#       t not normalising <g>
+#       Bruhat condition: exists b in B with (b*t)^3 = 1
+#
+# Current target:
+#   Test whether the pure Weyl-lift exact-inverting t-candidates
+#   are enough, first using old Kac-line convention, then using
+#   basis-derived Kac/root labels.
+############################################################
+
+
+############################################################
+############################################################
+# STEP 38B FULL FRESH RESTART
+############################################################
+############################################################
+
+Print("\n============================================================\n");
+Print("STEP 38B FULL FRESH RESTART\n");
+Print("============================================================\n");
+
+############################################################
+# PART 0. Basic setup
+############################################################
+
+LoadPackage("sla");
+
+F7_32 := GF(7);;
+Fext32 := GF(7,12);;
+
+one7_32 := One(F7_32);;
+oneExt32 := One(Fext32);;
+
+trace_f_target_32  := 2 * one7_32;;
+trace_f2_target_32 := 5 * one7_32;;
+trace_t_target_32  := 3 * one7_32;;
+
+zeta13_32 := Z(7,12)^((7^12 - 1) / 13);;
+
+Print("Order(zeta13_32) = ", Order(zeta13_32), "\n");
+
+############################################################
+# PART 1. Build L(F4) over GF(7)
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 1: BUILD L(F4)\n");
+Print("============================================================\n");
+
+L32 := SimpleLieAlgebra("F", 4, F7_32);;
+CB32 := ChevalleyBasis(L32);;
+
+pos32 := CB32[1];;
+neg32 := CB32[2];;
+cart32 := CB32[3];;
+
+basisList32 := Concatenation(pos32, neg32, cart32);;
+Basis32 := Basis(L32, basisList32);;
+
+Print("Dimension L32 = ", Dimension(L32), "\n");
+Print("Positive roots = ", Length(pos32), "\n");
+Print("Negative roots = ", Length(neg32), "\n");
+Print("Cartan dim     = ", Length(cart32), "\n");
+
+One52_32 := IdentityMat(52, F7_32);;
+Zero52_32 := NullMat(52, 52, F7_32);;
+One52Ext32 := IdentityMat(52, Fext32);;
+
+############################################################
+# PART 2. Helpers
+############################################################
+
+Trace32 := function(M)
+    local s, i;
+
+    s := Zero(M[1][1]);
+
+    for i in [1..Length(M)] do
+        s := s + M[i][i];
+    od;
+
+    return s;
+end;;
+
+TraceIsZero32 := function(M)
+    return Trace32(M) = Zero(Trace32(M));
+end;;
+
+GoodTraceProfileF32 := function(x)
+    return Order(x) = 6
+       and Trace32(x) = trace_f_target_32
+       and Trace32(x^2) = trace_f2_target_32
+       and Trace32(x^3) = trace_t_target_32;
+end;;
+
+LiftMatToExt32 := function(M)
+    local n, m, N, i, j;
+
+    n := Length(M);
+    m := Length(M[1]);
+
+    N := NullMat(n, m, Fext32);
+
+    for i in [1..n] do
+        for j in [1..m] do
+            N[i][j] := IntFFE(M[i][j]) * oneExt32;
+        od;
+    od;
+
+    return N;
+end;;
+
+MatrixInList32 := function(x, L)
+    local y;
+
+    for y in L do
+        if x = y then
+            return true;
+        fi;
+    od;
+
+    return false;
+end;;
+
+DistinctMatrixList32 := function(L)
+    local D, x;
+
+    D := [];
+
+    for x in L do
+        if not MatrixInList32(x, D) then
+            Add(D, x);
+        fi;
+    od;
+
+    return D;
+end;;
+
+ActionExponentOnGExt32 := function(g, x)
+    local gx, k;
+
+    gx := g^x;
+
+    for k in [0..12] do
+        if gx = g^k then
+            return k;
+        fi;
+    od;
+
+    return fail;
+end;;
+
+############################################################
+# PART 3. Root group matrices
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 3: BUILD ROOT GROUP MATRICES\n");
+Print("============================================================\n");
+
+RootGroupMatrix32 := function(v, t)
+    local A, M, term, coeff, k;
+
+    A := AdjointMatrix(Basis32, v);
+
+    M := IdentityMat(52, F7_32);
+
+    term := A;
+    coeff := t;
+
+    M := M + coeff * term;
+
+    for k in [2..6] do
+        term := term * A;
+        coeff := coeff * t / (k * one7_32);
+
+        if term = Zero52_32 then
+            break;
+        fi;
+
+        M := M + coeff * term;
+    od;
+
+    return M;
+end;;
+
+rootMats32 := [];;
+
+for i in [1..Length(pos32)] do
+    Add(rootMats32, RootGroupMatrix32(pos32[i], one7_32));
+od;
+
+for i in [1..Length(neg32)] do
+    Add(rootMats32, RootGroupMatrix32(neg32[i], one7_32));
+od;
+
+Print("Number of root group generators = ", Length(rootMats32), "\n");
+
+G32B := Group(rootMats32);;
+
+############################################################
+# PART 4. Weyl lifts
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 4: BUILD WEYL-LIFT SUBGROUP\n");
+Print("============================================================\n");
+
+WeylLifts32 := [];;
+
+for i in [1..Length(pos32)] do
+    Add(
+        WeylLifts32,
+        RootGroupMatrix32(pos32[i], one7_32)
+        * RootGroupMatrix32(neg32[i], -one7_32)
+        * RootGroupMatrix32(pos32[i], one7_32)
+    );
+od;
+
+Wlift32 := Group(WeylLifts32);;
+
+Print("Size(Wlift32) = ", Size(Wlift32), "\n");
+
+############################################################
+# PART 5. Freeze known good f32B
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 5: FREEZE f32B\n");
+Print("============================================================\n");
+
+fWord32 := [5,24,2,14,8,17,9,6,7,16,5,23,19,9,3,6,6,15,9,1];;
+
+f32B := One52_32;;
+
+for i in fWord32 do
+    f32B := f32B * WeylLifts32[i];
+od;
+
+Print("Order(f32B) = ", Order(f32B), "\n");
+Print("Trace(f32B) = ", Trace32(f32B), "\n");
+Print("Trace(f32B^2) = ", Trace32(f32B^2), "\n");
+Print("Trace(f32B^3) = ", Trace32(f32B^3), "\n");
+Print("GoodTraceProfileF32(f32B) = ", GoodTraceProfileF32(f32B), "\n");
+
+if not GoodTraceProfileF32(f32B) then
+    Error("f32B does not have the expected trace profile.");
+fi;
+
+fExt32 := LiftMatToExt32(f32B);;
+
+Print("Order(fExt32) = ", Order(fExt32), "\n");
+
+############################################################
+# PART 6. Root coordinate data
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 6: ROOT DATA\n");
+Print("============================================================\n");
+
+RootCoeffToIntList32 := function(r)
+    return List(r, x -> Int(x));
+end;;
+
+R32 := RootSystem(L32);;
+posRootsSimple32 := List(PositiveRoots(R32), RootCoeffToIntList32);;
+
+Print("Number of positive roots from RootSystem(L32) = ",
+      Length(posRootsSimple32), "\n");
+
+if Length(posRootsSimple32) <> 24 then
+    Error("Expected 24 positive roots.");
+fi;
+
+############################################################
+# PART 7. Enumerate exact-inverting Weyl-lift t-candidates
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 7: FIND TRACE -4 EXACT-INVERTING t-CANDIDATES\n");
+Print("============================================================\n");
+
+WliftElems32 := Elements(Wlift32);;
+
+Print("Number of elements in Wlift32 = ", Length(WliftElems32), "\n");
+
+WliftInvolutions32 := Filtered(
+    WliftElems32,
+    x -> x^2 = One52_32 and x <> One52_32
+);;
+
+Print("Number of involutions in Wlift32 = ",
+      Length(WliftInvolutions32), "\n");
+
+ExactInverters32 := Filtered(
+    WliftInvolutions32,
+    x -> f32B^x = f32B^-1
+);;
+
+Print("Number of exact inverters f^t=f^-1 = ",
+      Length(ExactInverters32), "\n");
+
+TraceMinus4ExactInverters32 := Filtered(
+    ExactInverters32,
+    x -> Trace32(x) = trace_t_target_32
+);;
+
+Print("Number of trace -4 exact inverters = ",
+      Length(TraceMinus4ExactInverters32), "\n");
+
+TraceMinus4ExactInvertersExt32 := List(
+    TraceMinus4ExactInverters32,
+    t -> LiftMatToExt32(t)
+);;
+
+############################################################
+# PART 8. Corrected Kac-builder convention search
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 8: AUTO-FIND KAC CONVENTION\n");
+Print("============================================================\n");
+
+CmatF4a_32 := [
+    [ 2, -1,  0,  0],
+    [-1,  2, -2,  0],
+    [ 0, -1,  2, -1],
+    [ 0,  0, -1,  2]
+];;
+
+CmatF4b_32 := [
+    [ 2, -1,  0,  0],
+    [-1,  2, -1,  0],
+    [ 0, -2,  2, -1],
+    [ 0,  0, -1,  2]
+];;
+
+ExpModeWithCartan32 := function(r, kac, mode, C)
+    local CT, s, i, j;
+
+    CT := TransposedMat(C);
+    s := 0;
+
+    if mode = 1 then
+        for i in [1..4] do
+            s := s + r[i] * kac[i];
+        od;
+    fi;
+
+    if mode = 2 then
+        for i in [1..4] do
+            for j in [1..4] do
+                s := s + r[i] * C[i][j] * kac[j];
+            od;
+        od;
+    fi;
+
+    if mode = 3 then
+        for i in [1..4] do
+            for j in [1..4] do
+                s := s + r[i] * CT[i][j] * kac[j];
+            od;
+        od;
+    fi;
+
+    if mode = 4 then
+        for i in [1..4] do
+            for j in [1..4] do
+                s := s + kac[i] * C[i][j] * r[j];
+            od;
+        od;
+    fi;
+
+    if mode = 5 then
+        for i in [1..4] do
+            for j in [1..4] do
+                s := s + kac[i] * CT[i][j] * r[j];
+            od;
+        od;
+    fi;
+
+    return s mod 13;
+end;;
+
+DiagMatFromListExt32 := function(diag)
+    local n, M, i;
+
+    n := Length(diag);
+    M := NullMat(n, n, Fext32);
+
+    for i in [1..n] do
+        M[i][i] := diag[i];
+    od;
+
+    return M;
+end;;
+
+BuildGExtFromKacLineConvention32 := function(kac, mode, C)
+    local diag, r, e, i;
+
+    diag := [];
+
+    for r in posRootsSimple32 do
+        e := ExpModeWithCartan32(r, kac, mode, C);
+        Add(diag, zeta13_32^e);
+    od;
+
+    for r in posRootsSimple32 do
+        e := (-ExpModeWithCartan32(r, kac, mode, C)) mod 13;
+        Add(diag, zeta13_32^e);
+    od;
+
+    for i in [1..4] do
+        Add(diag, oneExt32);
+    od;
+
+    return DiagMatFromListExt32(diag);
+end;;
+
+FindGoodKacConvention32 := function()
+    local testLine, cartanList, cIndex, C, mode, g, act;
+
+    testLine := [1,3,8,12];
+    cartanList := [CmatF4a_32, CmatF4b_32];
+
+    Print("Testing known Kac line ", testLine, "\n");
+
+    for cIndex in [1..Length(cartanList)] do
+        C := cartanList[cIndex];
+
+        for mode in [1..5] do
+            g := BuildGExtFromKacLineConvention32(testLine, mode, C);
+            act := ActionExponentOnGExt32(g, fExt32);
+
+            Print("\nCartan choice ", cIndex, ", mode ", mode, "\n");
+            Print("  g^13 = 1? ", g^13 = One52Ext32, "\n");
+            Print("  g <> 1? ", g <> One52Ext32, "\n");
+            Print("  Trace(g)=0? ", TraceIsZero32(g), "\n");
+            Print("  action exponent of f on <g> = ", act, "\n");
+            Print("  g^f = g^10? ", g^fExt32 = g^10, "\n");
+            Print("  g^f = g^4 ? ", g^fExt32 = g^4, "\n");
+
+            if TraceIsZero32(g) and act = 10 then
+                Print("\nGOOD CONVENTION FOUND.\n");
+                Print("Cartan choice = ", cIndex, ", mode = ", mode, "\n");
+                return [cIndex, mode];
+            fi;
+        od;
+    od;
+
+    return fail;
+end;;
+
+GoodKacConvention32 := FindGoodKacConvention32();;
+
+if GoodKacConvention32 = fail then
+    Error("No good Kac convention found. Stop here before any long search.");
+fi;
+
+GoodCartanIndex32 := GoodKacConvention32[1];;
+GoodKacMode32 := GoodKacConvention32[2];;
+
+if GoodCartanIndex32 = 1 then
+    GoodCartan32 := CmatF4a_32;;
+else
+    GoodCartan32 := CmatF4b_32;;
+fi;
+
+BuildGoodGExtFromKacLine32 := function(kac)
+    return BuildGExtFromKacLineConvention32(kac, GoodKacMode32, GoodCartan32);
+end;;
+
+############################################################
+# PART 9. B and Bruhat helpers
+############################################################
+
+BuildBExtNormalForms32 := function(g, f)
+    local B, i, j;
+
+    B := [];
+
+    for i in [0..12] do
+        for j in [0..5] do
+            Add(B, rec(i := i, j := j, elt := g^i * f^j));
+        od;
+    od;
+
+    return B;
+end;;
+
+BruhatWitnesses32 := function(g, f, t)
+    local witnesses, i, j, b, bt;
+
+    witnesses := [];
+
+    for i in [0..12] do
+        for j in [0..5] do
+            b := g^i * f^j;
+            bt := b * t;
+
+            if bt <> One52Ext32 and bt^3 = One52Ext32 then
+                Add(witnesses, [i, j]);
+            fi;
+        od;
+    od;
+
+    return witnesses;
+end;;
+
+############################################################
+# PART 10. Run all six Kac lines
+############################################################
+
+RunStep38B_AllKacLines32 := function()
+    local KacLines32_local, AllLineResults32_local;
+    local lineNo, kac, g, actionF;
+    local BRecords, BMats, distinctBCount;
+    local basicGoodIndices, hitRecords;
+    local idx, t, actionT, witnesses, r;
+
+    KacLines32_local := [
+        [1,3,8,12],
+        [1,6,12,3],
+        [1,7,9,0],
+        [1,9,3,7],
+        [1,10,0,4],
+        [1,11,10,1]
+    ];
+
+    AllLineResults32_local := [];
+
+    Print("\n============================================================\n");
+    Print("PART 10: TEST ALL SIX KAC LINES\n");
+    Print("============================================================\n");
+
+    for lineNo in [1..Length(KacLines32_local)] do
+
+        kac := KacLines32_local[lineNo];
+
+        Print("\n------------------------------------------------------------\n");
+        Print("Testing Kac line #", lineNo, ": ", kac, "\n");
+        Print("------------------------------------------------------------\n");
+
+        g := BuildGoodGExtFromKacLine32(kac);
+
+        Print("g^13 = 1? ", g^13 = One52Ext32, "\n");
+        Print("g <> 1? ", g <> One52Ext32, "\n");
+        Print("Trace(g)=0? ", TraceIsZero32(g), "\n");
+
+        actionF := ActionExponentOnGExt32(g, fExt32);
+
+        Print("Action exponent of f on <g> = ", actionF, "\n");
+        Print("g^f = g^10? ", g^fExt32 = g^10, "\n");
+        Print("g^f = g^4 ? ", g^fExt32 = g^4, "\n");
+
+        if TraceIsZero32(g) and actionF = 10 then
+
+            BRecords := BuildBExtNormalForms32(g, fExt32);
+            BMats := List(BRecords, r -> r.elt);
+            distinctBCount := Length(DistinctMatrixList32(BMats));
+
+            Print("Distinct normal forms g^i f^j = ", distinctBCount, "\n");
+
+            basicGoodIndices := [];
+            hitRecords := [];
+
+            if distinctBCount = 78 then
+
+                for idx in [1..Length(TraceMinus4ExactInvertersExt32)] do
+
+                    t := TraceMinus4ExactInvertersExt32[idx];
+
+                    actionT := ActionExponentOnGExt32(g, t);
+
+                    if actionT = fail then
+
+                        if not MatrixInList32(t, BMats) then
+
+                            Add(basicGoodIndices, idx);
+
+                            witnesses := BruhatWitnesses32(g, fExt32, t);
+
+                            if Length(witnesses) > 0 then
+
+                                Add(
+                                    hitRecords,
+                                    rec(
+                                        t_index := idx,
+                                        first_witness := witnesses[1],
+                                        all_witnesses := witnesses
+                                    )
+                                );
+
+                                Print("BRUHAT HIT FOUND!\n");
+                                Print("  line = ", lineNo, "\n");
+                                Print("  t index = ", idx, "\n");
+                                Print("  witness [i,j] = ", witnesses[1], "\n");
+
+                            fi;
+
+                        fi;
+
+                    fi;
+
+                od;
+
+            fi;
+
+            Print("Basic external candidates = ", Length(basicGoodIndices), "\n");
+            Print("Bruhat hits = ", Length(hitRecords), "\n");
+
+            Add(
+                AllLineResults32_local,
+                rec(
+                    line_number := lineNo,
+                    kac_line := kac,
+                    action_of_f := actionF,
+                    distinct_B_normal_forms := distinctBCount,
+                    basic_external_candidate_indices := basicGoodIndices,
+                    bruhat_hits := hitRecords
+                )
+            );
+
+        else
+            Print("SKIP this line: trace/action condition failed.\n");
+        fi;
+
+    od;
+
+    Print("\n============================================================\n");
+    Print("FINAL REPORT STEP 38B\n");
+    Print("============================================================\n");
+
+    for lineNo in [1..Length(AllLineResults32_local)] do
+        r := AllLineResults32_local[lineNo];
+
+        Print("\nLine #", r.line_number, ": ", r.kac_line, "\n");
+        Print("  action of f = ", r.action_of_f, "\n");
+        Print("  distinct B normal forms = ", r.distinct_B_normal_forms, "\n");
+        Print("  basic external candidates = ",
+              Length(r.basic_external_candidate_indices), "\n");
+        Print("  Bruhat hits = ", Length(r.bruhat_hits), "\n");
+
+        if Length(r.bruhat_hits) > 0 then
+            Print("  first hit t index = ", r.bruhat_hits[1].t_index, "\n");
+            Print("  first witness = ", r.bruhat_hits[1].first_witness, "\n");
+        fi;
+    od;
+
+    KacLines32 := KacLines32_local;
+    AllLineResults32 := AllLineResults32_local;
+
+    return AllLineResults32_local;
+end;;
+
+############################################################
+# RUN STEP 38B
+############################################################
+
+AllLineResults32 := RunStep38B_AllKacLines32();;
+
+Print("\nSTEP 38B FULL FRESH RESTART FINISHED.\n");
+
+
+
+############################################################
+############################################################
+# STEP 39:
+# Fresh restart using basis-derived Kac/root labels
+############################################################
+############################################################
+
+############################################################
+# STEP 39:
+# Fresh restart using basis-derived Kac/root labels
+#
+# Important change:
+#   We no longer assume the old Kac vectors [1,3,8,12], etc.
+#   Those coordinates are not in the same convention as the current
+#   ChevalleyBasis(L32) ordering.
+#
+# Instead:
+#   1. Build the actual adjoint F4(7) setup.
+#   2. Freeze the known good f.
+#   3. Derive root labels from Cartan action on the actual basis.
+#   4. Search all projective Kac vectors v in P^3(F_13).
+#   5. Keep those giving:
+#          Trace(g_v)=0
+#          g_v^f = g_v^10
+#          78 distinct normal forms g^i f^j
+#   6. Test the 36 trace -4 exact-inverting Weyl-lift t-candidates
+#      against these recovered good g-lines.
+############################################################
+
+Print("\n============================================================\n");
+Print("STEP 39: BASIS-DERIVED KAC-LINE SEARCH\n");
+Print("============================================================\n");
+
+############################################################
+# PART 0. Basic setup
+############################################################
+
+LoadPackage("sla");
+
+F7_32 := GF(7);;
+Fext32 := GF(7,12);;
+
+one7_32 := One(F7_32);;
+oneExt32 := One(Fext32);;
+
+trace_f_target_32  := 2 * one7_32;;  #  2
+trace_f2_target_32 := 5 * one7_32;;  # -2 in GF(7)
+trace_t_target_32  := 3 * one7_32;;  # -4 in GF(7)
+
+zeta13_32 := Z(7,12)^((7^12 - 1) / 13);;
+
+Print("Order(zeta13_32) = ", Order(zeta13_32), "\n");
+
+############################################################
+# PART 1. Build L(F4) over GF(7)
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 1: BUILD L(F4)\n");
+Print("============================================================\n");
+
+L32 := SimpleLieAlgebra("F", 4, F7_32);;
+CB32 := ChevalleyBasis(L32);;
+
+pos32 := CB32[1];;
+neg32 := CB32[2];;
+cart32 := CB32[3];;
+
+basisList32 := Concatenation(pos32, neg32, cart32);;
+Basis32 := Basis(L32, basisList32);;
+
+Print("Dimension L32 = ", Dimension(L32), "\n");
+Print("Positive root vectors = ", Length(pos32), "\n");
+Print("Negative root vectors = ", Length(neg32), "\n");
+Print("Cartan vectors        = ", Length(cart32), "\n");
+
+One52_32 := IdentityMat(52, F7_32);;
+Zero52_32 := NullMat(52, 52, F7_32);;
+One52Ext32 := IdentityMat(52, Fext32);;
+
+############################################################
+# PART 2. Helpers
+############################################################
+
+Trace32 := function(M)
+    local s, i;
+
+    s := Zero(M[1][1]);
+
+    for i in [1..Length(M)] do
+        s := s + M[i][i];
+    od;
+
+    return s;
+end;;
+
+TraceIsZero32 := function(M)
+    return Trace32(M) = Zero(Trace32(M));
+end;;
+
+GoodTraceProfileF32 := function(x)
+    return Order(x) = 6
+       and Trace32(x) = trace_f_target_32
+       and Trace32(x^2) = trace_f2_target_32
+       and Trace32(x^3) = trace_t_target_32;
+end;;
+
+LiftMatToExt32 := function(M)
+    local n, m, N, i, j;
+
+    n := Length(M);
+    m := Length(M[1]);
+
+    N := NullMat(n, m, Fext32);
+
+    for i in [1..n] do
+        for j in [1..m] do
+            N[i][j] := IntFFE(M[i][j]) * oneExt32;
+        od;
+    od;
+
+    return N;
+end;;
+
+MatrixInList32 := function(x, L)
+    local y;
+
+    for y in L do
+        if x = y then
+            return true;
+        fi;
+    od;
+
+    return false;
+end;;
+
+VectorInList32 := function(v, L)
+    local w;
+
+    for w in L do
+        if v = w then
+            return true;
+        fi;
+    od;
+
+    return false;
+end;;
+
+DistinctMatrixList32 := function(L)
+    local D, x;
+
+    D := [];
+
+    for x in L do
+        if not MatrixInList32(x, D) then
+            Add(D, x);
+        fi;
+    od;
+
+    return D;
+end;;
+
+ActionExponentOnGExt32 := function(g, x)
+    local gx, k;
+
+    gx := g^x;
+
+    for k in [0..12] do
+        if gx = g^k then
+            return k;
+        fi;
+    od;
+
+    return fail;
+end;;
+
+GF7EntryToSmallInt32 := function(a)
+    local n;
+
+    n := IntFFE(a);
+
+    # Convert 0,1,2,3,4,5,6 into 0,1,2,3,-3,-2,-1.
+    if n > 3 then
+        n := n - 7;
+    fi;
+
+    return n;
+end;;
+
+InvMod13_32 := function(a)
+    local k;
+
+    a := a mod 13;
+
+    for k in [1..12] do
+        if (a * k) mod 13 = 1 then
+            return k;
+        fi;
+    od;
+
+    return fail;
+end;;
+
+NormalizeVecMod13_32 := function(v)
+    local i, inv, w;
+
+    w := List(v, x -> x mod 13);
+
+    for i in [1..Length(w)] do
+        if w[i] <> 0 then
+            inv := InvMod13_32(w[i]);
+            return List(w, x -> (x * inv) mod 13);
+        fi;
+    od;
+
+    return fail;
+end;;
+
+############################################################
+# PART 3. Root group matrices and Weyl lifts
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 3: BUILD ROOT GROUP MATRICES AND WEYL LIFTS\n");
+Print("============================================================\n");
+
+RootGroupMatrix32 := function(v, t)
+    local A, M, term, coeff, k;
+
+    A := AdjointMatrix(Basis32, v);
+
+    M := IdentityMat(52, F7_32);
+
+    term := A;
+    coeff := t;
+
+    M := M + coeff * term;
+
+    for k in [2..6] do
+        term := term * A;
+        coeff := coeff * t / (k * one7_32);
+
+        if term = Zero52_32 then
+            break;
+        fi;
+
+        M := M + coeff * term;
+    od;
+
+    return M;
+end;;
+
+rootMats32 := [];;
+
+for i in [1..Length(pos32)] do
+    Add(rootMats32, RootGroupMatrix32(pos32[i], one7_32));
+od;
+
+for i in [1..Length(neg32)] do
+    Add(rootMats32, RootGroupMatrix32(neg32[i], one7_32));
+od;
+
+Print("Number of root group generators = ", Length(rootMats32), "\n");
+
+G32B := Group(rootMats32);;
+
+WeylLifts32 := [];;
+
+for i in [1..Length(pos32)] do
+    Add(
+        WeylLifts32,
+        RootGroupMatrix32(pos32[i], one7_32)
+        * RootGroupMatrix32(neg32[i], -one7_32)
+        * RootGroupMatrix32(pos32[i], one7_32)
+    );
+od;
+
+Wlift32 := Group(WeylLifts32);;
+
+Print("Size(Wlift32) = ", Size(Wlift32), "\n");
+
+############################################################
+# PART 4. Freeze known good f
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 4: FREEZE KNOWN GOOD f\n");
+Print("============================================================\n");
+
+fWord32 := [5,24,2,14,8,17,9,6,7,16,5,23,19,9,3,6,6,15,9,1];;
+
+f32B := One52_32;;
+
+for i in fWord32 do
+    f32B := f32B * WeylLifts32[i];
+od;
+
+Print("Order(f32B) = ", Order(f32B), "\n");
+Print("Trace(f32B) = ", Trace32(f32B), "\n");
+Print("Trace(f32B^2) = ", Trace32(f32B^2), "\n");
+Print("Trace(f32B^3) = ", Trace32(f32B^3), "\n");
+Print("GoodTraceProfileF32(f32B) = ", GoodTraceProfileF32(f32B), "\n");
+
+if not GoodTraceProfileF32(f32B) then
+    Error("Frozen f32B does not have the expected trace profile.");
+fi;
+
+fExt32 := LiftMatToExt32(f32B);;
+
+Print("Order(fExt32) = ", Order(fExt32), "\n");
+
+############################################################
+# PART 5. Extract actual root labels from Cartan action
+#
+# For each basis vector e_i, read eigenvalues of ad(h_j).
+# We test both signs later, because ad convention can be [h,x]
+# or [x,h].
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 5: EXTRACT ROOT LABELS FROM CARTAN ACTION\n");
+Print("============================================================\n");
+
+CartanAdjMats32 := List(cart32, h -> AdjointMatrix(Basis32, h));;
+
+RootLabelsRaw32 := [];;
+
+for i in [1..48] do
+    Add(
+        RootLabelsRaw32,
+        List([1..4], j -> GF7EntryToSmallInt32(CartanAdjMats32[j][i][i]))
+    );
+od;
+
+Print("First 10 raw root labels from actual Chevalley basis:\n");
+
+for i in [1..10] do
+    Print("  basis root ", i, " : ", RootLabelsRaw32[i], "\n");
+od;
+
+############################################################
+# PART 6. Build diagonal g from derived root labels
+############################################################
+
+DiagMatFromListExt32 := function(diag)
+    local n, M, i;
+
+    n := Length(diag);
+    M := NullMat(n, n, Fext32);
+
+    for i in [1..n] do
+        M[i][i] := diag[i];
+    od;
+
+    return M;
+end;;
+
+DotLabelKacMod13_32 := function(label, kac)
+    local s, i;
+
+    s := 0;
+
+    for i in [1..4] do
+        s := s + label[i] * kac[i];
+    od;
+
+    return s mod 13;
+end;;
+
+BuildGFromDerivedLabels32 := function(kac, sign)
+    local diag, i, e, label;
+
+    diag := [];
+
+    for i in [1..48] do
+        label := RootLabelsRaw32[i];
+
+        e := DotLabelKacMod13_32(label, kac);
+
+        if sign = -1 then
+            e := (-e) mod 13;
+        fi;
+
+        Add(diag, zeta13_32^e);
+    od;
+
+    for i in [1..4] do
+        Add(diag, oneExt32);
+    od;
+
+    return DiagMatFromListExt32(diag);
+end;;
+
+############################################################
+# PART 7. Enumerate projective lines in F_13^4
+############################################################
+
+ProjectiveLines13_4_32 := function()
+    local lines, a, b, c, d, v, nv;
+
+    lines := [];
+
+    for a in [0..12] do
+        for b in [0..12] do
+            for c in [0..12] do
+                for d in [0..12] do
+
+                    v := [a,b,c,d];
+
+                    if v <> [0,0,0,0] then
+                        nv := NormalizeVecMod13_32(v);
+
+                        if not VectorInList32(nv, lines) then
+                            Add(lines, nv);
+                        fi;
+                    fi;
+
+                od;
+            od;
+        od;
+    od;
+
+    return lines;
+end;;
+
+AllProjectiveLines32 := ProjectiveLines13_4_32();;
+
+Print("Number of projective lines in P^3(F_13) = ",
+      Length(AllProjectiveLines32), "\n");
+
+############################################################
+# PART 8. Search for good g-lines
+#
+# Good means:
+#   Trace(g) = 0
+#   g^f = g^10
+#
+# We test sign = 1 and sign = -1.
+############################################################
+
+FindGoodDerivedKacLines32 := function()
+    local good, sign, count, v, g, act;
+
+    good := [];
+
+    for sign in [1, -1] do
+
+        Print("\nSearching with root-label sign = ", sign, "\n");
+
+        count := 0;
+
+        for v in AllProjectiveLines32 do
+
+            count := count + 1;
+
+            if count mod 200 = 0 then
+                Print("  checked ", count, " projective lines for sign ", sign, "\n");
+            fi;
+
+            g := BuildGFromDerivedLabels32(v, sign);
+
+            if TraceIsZero32(g) then
+
+                act := ActionExponentOnGExt32(g, fExt32);
+
+                if act = 10 then
+                    Print("GOOD g-line found: sign=", sign, ", v=", v, "\n");
+
+                    Add(
+                        good,
+                        rec(
+                            sign := sign,
+                            kac_line := v,
+                            g := g,
+                            action_of_f := act
+                        )
+                    );
+                fi;
+
+            fi;
+
+        od;
+
+    od;
+
+    return good;
+end;;
+
+GoodDerivedKacLines32 := FindGoodDerivedKacLines32();;
+
+Print("\nNumber of good derived Kac lines = ",
+      Length(GoodDerivedKacLines32), "\n");
+
+if Length(GoodDerivedKacLines32) = 0 then
+    Error("No good g-lines found. Stop before Bruhat search.");
+fi;
+
+############################################################
+# PART 9. Find trace -4 exact-inverting Weyl-lift t-candidates
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 9: FIND TRACE -4 EXACT-INVERTING t-CANDIDATES\n");
+Print("============================================================\n");
+
+WliftElems32 := Elements(Wlift32);;
+
+Print("Number of elements in Wlift32 = ", Length(WliftElems32), "\n");
+
+WliftInvolutions32 := Filtered(
+    WliftElems32,
+    x -> x^2 = One52_32 and x <> One52_32
+);;
+
+Print("Number of involutions in Wlift32 = ",
+      Length(WliftInvolutions32), "\n");
+
+ExactInverters32 := Filtered(
+    WliftInvolutions32,
+    x -> f32B^x = f32B^-1
+);;
+
+Print("Number of exact inverters f^t=f^-1 = ",
+      Length(ExactInverters32), "\n");
+
+TraceMinus4ExactInverters32 := Filtered(
+    ExactInverters32,
+    x -> Trace32(x) = trace_t_target_32
+);;
+
+Print("Number of trace -4 exact inverters = ",
+      Length(TraceMinus4ExactInverters32), "\n");
+
+TraceMinus4ExactInvertersExt32 := List(
+    TraceMinus4ExactInverters32,
+    t -> LiftMatToExt32(t)
+);;
+
+############################################################
+# PART 10. B and Bruhat helpers
+############################################################
+
+BuildBExtNormalForms32 := function(g, f)
+    local B, i, j;
+
+    B := [];
+
+    for i in [0..12] do
+        for j in [0..5] do
+            Add(B, rec(i := i, j := j, elt := g^i * f^j));
+        od;
+    od;
+
+    return B;
+end;;
+
+BruhatWitnesses32 := function(g, f, t)
+    local witnesses, i, j, b, bt;
+
+    witnesses := [];
+
+    for i in [0..12] do
+        for j in [0..5] do
+            b := g^i * f^j;
+            bt := b * t;
+
+            if bt <> One52Ext32 and bt^3 = One52Ext32 then
+                Add(witnesses, [i, j]);
+            fi;
+        od;
+    od;
+
+    return witnesses;
+end;;
+
+############################################################
+# PART 11. Test Bruhat condition for recovered good lines
+############################################################
+
+RunStep39BruhatOnGoodLines32 := function()
+    local results, recg, lineNo, g, BMats, BRecords, distinctBCount;
+    local idx, t, actionT, witnesses;
+    local basicGoodIndices, hitRecords;
+
+    results := [];
+    lineNo := 0;
+
+    Print("\n============================================================\n");
+    Print("PART 11: BRUHAT TEST ON RECOVERED GOOD g-LINES\n");
+    Print("============================================================\n");
+
+    for recg in GoodDerivedKacLines32 do
+
+        lineNo := lineNo + 1;
+        g := recg.g;
+
+        Print("\n------------------------------------------------------------\n");
+        Print("Testing recovered g-line #", lineNo, "\n");
+        Print("  sign = ", recg.sign, "\n");
+        Print("  kac line = ", recg.kac_line, "\n");
+        Print("------------------------------------------------------------\n");
+
+        Print("Order condition g^13=1? ", g^13 = One52Ext32, "\n");
+        Print("Trace(g)=0? ", TraceIsZero32(g), "\n");
+        Print("Action exponent of f on <g> = ",
+              ActionExponentOnGExt32(g, fExt32), "\n");
+
+        BRecords := BuildBExtNormalForms32(g, fExt32);
+        BMats := List(BRecords, r -> r.elt);
+        distinctBCount := Length(DistinctMatrixList32(BMats));
+
+        Print("Distinct normal forms g^i f^j = ", distinctBCount, "\n");
+
+        basicGoodIndices := [];
+        hitRecords := [];
+
+        if distinctBCount = 78 then
+
+            for idx in [1..Length(TraceMinus4ExactInvertersExt32)] do
+
+                t := TraceMinus4ExactInvertersExt32[idx];
+
+                actionT := ActionExponentOnGExt32(g, t);
+
+                if actionT = fail then
+
+                    if not MatrixInList32(t, BMats) then
+
+                        Add(basicGoodIndices, idx);
+
+                        witnesses := BruhatWitnesses32(g, fExt32, t);
+
+                        if Length(witnesses) > 0 then
+
+                            Add(
+                                hitRecords,
+                                rec(
+                                    t_index := idx,
+                                    first_witness := witnesses[1],
+                                    all_witnesses := witnesses
+                                )
+                            );
+
+                            Print("BRUHAT HIT FOUND!\n");
+                            Print("  recovered line #", lineNo, "\n");
+                            Print("  t index = ", idx, "\n");
+                            Print("  first witness [i,j] = ", witnesses[1], "\n");
+                            Print("  number of witnesses = ", Length(witnesses), "\n");
+
+                        fi;
+
+                    fi;
+
+                fi;
+
+            od;
+
+        else
+            Print("SKIP Bruhat: B does not have 78 distinct normal forms.\n");
+        fi;
+
+        Print("Basic external candidates = ", Length(basicGoodIndices), "\n");
+        Print("Bruhat hits = ", Length(hitRecords), "\n");
+
+        Add(
+            results,
+            rec(
+                recovered_line_number := lineNo,
+                sign := recg.sign,
+                kac_line := recg.kac_line,
+                distinct_B_normal_forms := distinctBCount,
+                basic_external_candidate_indices := basicGoodIndices,
+                bruhat_hits := hitRecords
+            )
+        );
+
+    od;
+
+    return results;
+end;;
+
+Step39Results32 := RunStep39BruhatOnGoodLines32();;
+
+############################################################
+# PART 12. Final report
+############################################################
+
+Print("\n============================================================\n");
+Print("FINAL REPORT: STEP 39\n");
+Print("============================================================\n");
+
+Print("Number of good recovered g-lines = ",
+      Length(GoodDerivedKacLines32), "\n");
+
+for i in [1..Length(Step39Results32)] do
+    Print("\nRecovered line #", Step39Results32[i].recovered_line_number, "\n");
+    Print("  sign = ", Step39Results32[i].sign, "\n");
+    Print("  kac line = ", Step39Results32[i].kac_line, "\n");
+    Print("  distinct B normal forms = ",
+          Step39Results32[i].distinct_B_normal_forms, "\n");
+    Print("  basic external candidates = ",
+          Length(Step39Results32[i].basic_external_candidate_indices), "\n");
+    Print("  Bruhat hits = ",
+          Length(Step39Results32[i].bruhat_hits), "\n");
+
+    if Length(Step39Results32[i].bruhat_hits) > 0 then
+        Print("  first hit t index = ",
+              Step39Results32[i].bruhat_hits[1].t_index, "\n");
+        Print("  first witness = ",
+              Step39Results32[i].bruhat_hits[1].first_witness, "\n");
+    fi;
+od;
+
+Print("\nStored objects:\n");
+Print("  GoodDerivedKacLines32\n");
+Print("  TraceMinus4ExactInverters32\n");
+Print("  TraceMinus4ExactInvertersExt32\n");
+Print("  Step39Results32\n");
+
+Print("\nSTEP 39 FINISHED.\n");
+Print("============================================================\n");
+
+
+
+############################################################
+############################################################
+# STEP 39B:
+# Fixed fast Bruhat continuation
+############################################################
+############################################################
+
+############################################################
+# STEP 39B:
+# Fixed fast Bruhat continuation
+#
+# Use after Step 39 has already found:
+#   GoodDerivedKacLines32
+#   TraceMinus4ExactInvertersExt32
+#   fExt32
+#   One52Ext32
+#
+# This avoids the broken multi-local function syntax.
+############################################################
+
+Print("\n============================================================\n");
+Print("STEP 39B: FAST BRUHAT TEST ON RECOVERED GOOD g-LINES\n");
+Print("============================================================\n");
+
+############################################################
+# Re-define safe helpers
+############################################################
+
+MatrixInList32 := function(x, L)
+    local y;
+
+    for y in L do
+        if x = y then
+            return true;
+        fi;
+    od;
+
+    return false;
+end;;
+
+DistinctMatrixList32 := function(L)
+    local D, x;
+
+    D := [];
+
+    for x in L do
+        if not MatrixInList32(x, D) then
+            Add(D, x);
+        fi;
+    od;
+
+    return D;
+end;;
+
+BuildBExtNormalForms32 := function(g, f)
+    local B, i, j;
+
+    B := [];
+
+    for i in [0..12] do
+        for j in [0..5] do
+            Add(B, rec(i := i, j := j, elt := g^i * f^j));
+        od;
+    od;
+
+    return B;
+end;;
+
+ActionExponentOnGExt32 := function(g, x)
+    local gx, k;
+
+    gx := g^x;
+
+    for k in [0..12] do
+        if gx = g^k then
+            return k;
+        fi;
+    od;
+
+    return fail;
+end;;
+
+############################################################
+# Fast witness test
+#
+# These are the six exact-inverting abstract PSL2(13)
+# witness patterns:
+#
+#   g^12 f^3
+#   g^9  f^4
+#   g^10 f^5
+#   g^1  f^0
+#   g^4  f^1
+#   g^3  f^2
+############################################################
+
+AbstractWitnessPairs32 := [
+    [12,3],
+    [9,4],
+    [10,5],
+    [1,0],
+    [4,1],
+    [3,2]
+];;
+
+FastBruhatWitnesses32 := function(g, f, t)
+    local witnesses, pair, b, bt;
+
+    witnesses := [];
+
+    for pair in AbstractWitnessPairs32 do
+        b := g^pair[1] * f^pair[2];
+        bt := b * t;
+
+        if bt <> One52Ext32 and bt^3 = One52Ext32 then
+            Add(witnesses, pair);
+        fi;
+    od;
+
+    return witnesses;
+end;;
+
+############################################################
+# Optional full 78-pair witness test
+# Do not use this first if the fast test is enough.
+############################################################
+
+FullBruhatWitnesses32 := function(g, f, t)
+    local witnesses, i, j, b, bt;
+
+    witnesses := [];
+
+    for i in [0..12] do
+        for j in [0..5] do
+            b := g^i * f^j;
+            bt := b * t;
+
+            if bt <> One52Ext32 and bt^3 = One52Ext32 then
+                Add(witnesses, [i,j]);
+            fi;
+        od;
+    od;
+
+    return witnesses;
+end;;
+
+############################################################
+# Main fast test
+############################################################
+
+RunStep39B_FastBruhat32 := function()
+    local results, lineNo, recg, g, BRecords, BMats, distinctBCount, idx, t, actionT, witnesses, basicGoodIndices, hitRecords, r;
+
+    results := [];
+    lineNo := 0;
+
+    Print("\nNumber of recovered good g-lines = ",
+          Length(GoodDerivedKacLines32), "\n");
+
+    Print("Number of trace -4 exact-inverting t-candidates = ",
+          Length(TraceMinus4ExactInvertersExt32), "\n");
+
+    for recg in GoodDerivedKacLines32 do
+
+        lineNo := lineNo + 1;
+        g := recg.g;
+
+        Print("\n------------------------------------------------------------\n");
+        Print("Testing recovered g-line #", lineNo, "\n");
+        Print("  sign = ", recg.sign, "\n");
+        Print("  kac line = ", recg.kac_line, "\n");
+        Print("------------------------------------------------------------\n");
+
+        Print("g^13 = 1? ", g^13 = One52Ext32, "\n");
+        Print("Trace(g)=0? ", TraceIsZero32(g), "\n");
+        Print("Action exponent of f on <g> = ",
+              ActionExponentOnGExt32(g, fExt32), "\n");
+
+        BRecords := BuildBExtNormalForms32(g, fExt32);
+        BMats := List(BRecords, x -> x.elt);
+        distinctBCount := Length(DistinctMatrixList32(BMats));
+
+        Print("Distinct normal forms g^i f^j = ", distinctBCount, "\n");
+
+        basicGoodIndices := [];
+        hitRecords := [];
+
+        if distinctBCount = 78 then
+
+            for idx in [1..Length(TraceMinus4ExactInvertersExt32)] do
+
+                if idx mod 6 = 0 then
+                    Print("  tested t-candidates up to index ", idx, "\n");
+                fi;
+
+                t := TraceMinus4ExactInvertersExt32[idx];
+
+                actionT := ActionExponentOnGExt32(g, t);
+
+                if actionT = fail then
+
+                    if not MatrixInList32(t, BMats) then
+
+                        Add(basicGoodIndices, idx);
+
+                        witnesses := FastBruhatWitnesses32(g, fExt32, t);
+
+                        if Length(witnesses) > 0 then
+
+                            Add(
+                                hitRecords,
+                                rec(
+                                    t_index := idx,
+                                    first_witness := witnesses[1],
+                                    all_fast_witnesses := witnesses
+                                )
+                            );
+
+                            Print("FAST BRUHAT HIT FOUND!\n");
+                            Print("  recovered line #", lineNo, "\n");
+                            Print("  t index = ", idx, "\n");
+                            Print("  first fast witness [i,j] = ", witnesses[1], "\n");
+                            Print("  all fast witnesses = ", witnesses, "\n");
+
+                        fi;
+
+                    fi;
+
+                fi;
+
+            od;
+
+        else
+            Print("SKIP: B does not have 78 normal forms.\n");
+        fi;
+
+        Print("Basic external candidates = ", Length(basicGoodIndices), "\n");
+        Print("Fast Bruhat hits = ", Length(hitRecords), "\n");
+
+        Add(
+            results,
+            rec(
+                recovered_line_number := lineNo,
+                sign := recg.sign,
+                kac_line := recg.kac_line,
+                distinct_B_normal_forms := distinctBCount,
+                basic_external_candidate_indices := basicGoodIndices,
+                fast_bruhat_hits := hitRecords
+            )
+        );
+
+    od;
+
+    Print("\n============================================================\n");
+    Print("FINAL REPORT: STEP 39B FAST BRUHAT\n");
+    Print("============================================================\n");
+
+    for r in results do
+        Print("\nRecovered line #", r.recovered_line_number, "\n");
+        Print("  sign = ", r.sign, "\n");
+        Print("  kac line = ", r.kac_line, "\n");
+        Print("  distinct B normal forms = ", r.distinct_B_normal_forms, "\n");
+        Print("  basic external candidates = ",
+              Length(r.basic_external_candidate_indices), "\n");
+        Print("  fast Bruhat hits = ", Length(r.fast_bruhat_hits), "\n");
+
+        if Length(r.fast_bruhat_hits) > 0 then
+            Print("  first hit t index = ",
+                  r.fast_bruhat_hits[1].t_index, "\n");
+            Print("  first witness = ",
+                  r.fast_bruhat_hits[1].first_witness, "\n");
+        fi;
+    od;
+
+    return results;
+end;;
+
+Step39BFastResults32 := RunStep39B_FastBruhat32();;
+
+Print("\nSTEP 39B FINISHED.\n");
+
+
+
+############################################################
+############################################################
+# STEP 39B REPAIR:
+# Rebuild GoodDerivedKacLines32 from the 12 lines already found,
+# then run the fast Bruhat test.
+############################################################
+############################################################
+
+Print("\n============================================================\n");
+Print("STEP 39B REPAIR: REBUILD GOOD DERIVED KAC LINES\n");
+Print("============================================================\n");
+
+if not IsBound(BuildGFromDerivedLabels32) then
+    Error("BuildGFromDerivedLabels32 is missing. You need to restart from STEP 39.");
+fi;
+
+if not IsBound(fExt32) then
+    Error("fExt32 is missing. You need to restart from STEP 39.");
+fi;
+
+if not IsBound(TraceMinus4ExactInvertersExt32) then
+    Error("TraceMinus4ExactInvertersExt32 is missing. You need to restart from STEP 39.");
+fi;
+
+if not IsBound(One52Ext32) then
+    Error("One52Ext32 is missing. You need to restart from STEP 39.");
+fi;
+
+KnownGoodLineData32 := [
+    rec(sign :=  1, kac_line := [1,3,8,12]),
+    rec(sign :=  1, kac_line := [1,6,12,3]),
+    rec(sign :=  1, kac_line := [1,7,9,0]),
+    rec(sign :=  1, kac_line := [1,9,3,7]),
+    rec(sign :=  1, kac_line := [1,10,0,4]),
+    rec(sign :=  1, kac_line := [1,11,10,1]),
+
+    rec(sign := -1, kac_line := [1,3,8,12]),
+    rec(sign := -1, kac_line := [1,6,12,3]),
+    rec(sign := -1, kac_line := [1,7,9,0]),
+    rec(sign := -1, kac_line := [1,9,3,7]),
+    rec(sign := -1, kac_line := [1,10,0,4]),
+    rec(sign := -1, kac_line := [1,11,10,1])
+];;
+
+GoodDerivedKacLines32 := [];;
+
+for d in KnownGoodLineData32 do
+    gtmp := BuildGFromDerivedLabels32(d.kac_line, d.sign);
+
+    Print("\nRebuilding line sign=", d.sign,
+          ", kac=", d.kac_line, "\n");
+    Print("  g^13 = 1? ", gtmp^13 = One52Ext32, "\n");
+    Print("  Trace(g)=0? ", TraceIsZero32(gtmp), "\n");
+    Print("  action exponent of f on <g> = ",
+          ActionExponentOnGExt32(gtmp, fExt32), "\n");
+
+    if TraceIsZero32(gtmp) and ActionExponentOnGExt32(gtmp, fExt32) = 10 then
+        Add(
+            GoodDerivedKacLines32,
+            rec(
+                sign := d.sign,
+                kac_line := d.kac_line,
+                g := gtmp,
+                action_of_f := 10
+            )
+        );
+    else
+        Print("  WARNING: this line failed when rebuilding.\n");
+    fi;
+od;
+
+Print("\nNumber of rebuilt good derived Kac lines = ",
+      Length(GoodDerivedKacLines32), "\n");
+
+if Length(GoodDerivedKacLines32) = 0 then
+    Error("No good lines rebuilt. Stop.");
+fi;
+
+############################################################
+# Helpers
+############################################################
+
+MatrixInList32 := function(x, L)
+    local y;
+
+    for y in L do
+        if x = y then
+            return true;
+        fi;
+    od;
+
+    return false;
+end;;
+
+DistinctMatrixList32 := function(L)
+    local D, x;
+
+    D := [];
+
+    for x in L do
+        if not MatrixInList32(x, D) then
+            Add(D, x);
+        fi;
+    od;
+
+    return D;
+end;;
+
+BuildBExtNormalForms32 := function(g, f)
+    local B, i, j;
+
+    B := [];
+
+    for i in [0..12] do
+        for j in [0..5] do
+            Add(B, rec(i := i, j := j, elt := g^i * f^j));
+        od;
+    od;
+
+    return B;
+end;;
+
+ActionExponentOnGExt32 := function(g, x)
+    local gx, k;
+
+    gx := g^x;
+
+    for k in [0..12] do
+        if gx = g^k then
+            return k;
+        fi;
+    od;
+
+    return fail;
+end;;
+
+AbstractWitnessPairs32 := [
+    [12,3],
+    [9,4],
+    [10,5],
+    [1,0],
+    [4,1],
+    [3,2]
+];;
+
+FastBruhatWitnesses32 := function(g, f, t)
+    local witnesses, pair, b, bt;
+
+    witnesses := [];
+
+    for pair in AbstractWitnessPairs32 do
+        b := g^pair[1] * f^pair[2];
+        bt := b * t;
+
+        if bt <> One52Ext32 and bt^3 = One52Ext32 then
+            Add(witnesses, pair);
+        fi;
+    od;
+
+    return witnesses;
+end;;
+
+############################################################
+# Fast Bruhat test
+############################################################
+
+RunStep39B_FastBruhat32 := function()
+    local results, lineNo, recg, g, BRecords, BMats, distinctBCount, idx, t, actionT, witnesses, basicGoodIndices, hitRecords, r;
+
+    results := [];
+    lineNo := 0;
+
+    Print("\n============================================================\n");
+    Print("RUNNING STEP 39B FAST BRUHAT TEST\n");
+    Print("============================================================\n");
+
+    Print("Number of recovered good g-lines = ",
+          Length(GoodDerivedKacLines32), "\n");
+
+    Print("Number of trace -4 exact-inverting t-candidates = ",
+          Length(TraceMinus4ExactInvertersExt32), "\n");
+
+    for recg in GoodDerivedKacLines32 do
+
+        lineNo := lineNo + 1;
+        g := recg.g;
+
+        Print("\n------------------------------------------------------------\n");
+        Print("Testing recovered g-line #", lineNo, "\n");
+        Print("  sign = ", recg.sign, "\n");
+        Print("  kac line = ", recg.kac_line, "\n");
+        Print("------------------------------------------------------------\n");
+
+        Print("g^13 = 1? ", g^13 = One52Ext32, "\n");
+        Print("Trace(g)=0? ", TraceIsZero32(g), "\n");
+        Print("Action exponent of f on <g> = ",
+              ActionExponentOnGExt32(g, fExt32), "\n");
+
+        BRecords := BuildBExtNormalForms32(g, fExt32);
+        BMats := List(BRecords, x -> x.elt);
+        distinctBCount := Length(DistinctMatrixList32(BMats));
+
+        Print("Distinct normal forms g^i f^j = ", distinctBCount, "\n");
+
+        basicGoodIndices := [];
+        hitRecords := [];
+
+        if distinctBCount = 78 then
+
+            for idx in [1..Length(TraceMinus4ExactInvertersExt32)] do
+
+                if idx mod 6 = 0 then
+                    Print("  tested t-candidates up to index ", idx, "\n");
+                fi;
+
+                t := TraceMinus4ExactInvertersExt32[idx];
+
+                actionT := ActionExponentOnGExt32(g, t);
+
+                if actionT = fail then
+
+                    if not MatrixInList32(t, BMats) then
+
+                        Add(basicGoodIndices, idx);
+
+                        witnesses := FastBruhatWitnesses32(g, fExt32, t);
+
+                        if Length(witnesses) > 0 then
+
+                            Add(
+                                hitRecords,
+                                rec(
+                                    t_index := idx,
+                                    first_witness := witnesses[1],
+                                    all_fast_witnesses := witnesses
+                                )
+                            );
+
+                            Print("FAST BRUHAT HIT FOUND!\n");
+                            Print("  recovered line #", lineNo, "\n");
+                            Print("  t index = ", idx, "\n");
+                            Print("  first fast witness [i,j] = ", witnesses[1], "\n");
+                            Print("  all fast witnesses = ", witnesses, "\n");
+
+                        fi;
+
+                    fi;
+
+                fi;
+
+            od;
+
+        else
+            Print("SKIP: B does not have 78 normal forms.\n");
+        fi;
+
+        Print("Basic external candidates = ", Length(basicGoodIndices), "\n");
+        Print("Fast Bruhat hits = ", Length(hitRecords), "\n");
+
+        Add(
+            results,
+            rec(
+                recovered_line_number := lineNo,
+                sign := recg.sign,
+                kac_line := recg.kac_line,
+                distinct_B_normal_forms := distinctBCount,
+                basic_external_candidate_indices := basicGoodIndices,
+                fast_bruhat_hits := hitRecords
+            )
+        );
+
+    od;
+
+    Print("\n============================================================\n");
+    Print("FINAL REPORT: STEP 39B FAST BRUHAT\n");
+    Print("============================================================\n");
+
+    for r in results do
+        Print("\nRecovered line #", r.recovered_line_number, "\n");
+        Print("  sign = ", r.sign, "\n");
+        Print("  kac line = ", r.kac_line, "\n");
+        Print("  distinct B normal forms = ", r.distinct_B_normal_forms, "\n");
+        Print("  basic external candidates = ",
+              Length(r.basic_external_candidate_indices), "\n");
+        Print("  fast Bruhat hits = ", Length(r.fast_bruhat_hits), "\n");
+
+        if Length(r.fast_bruhat_hits) > 0 then
+            Print("  first hit t index = ",
+                  r.fast_bruhat_hits[1].t_index, "\n");
+            Print("  first witness = ",
+                  r.fast_bruhat_hits[1].first_witness, "\n");
+        fi;
+    od;
+
+    return results;
+end;;
+
+Step39BFastResults32 := RunStep39B_FastBruhat32();;
+
+Print("\nSTEP 39B REPAIR FINISHED.\n");
+Print("============================================================\n");

@@ -1,0 +1,4126 @@
+############################################################
+# F4(7) / L2(13) SUPERVISOR-ROUTE ARCHIVE
+# Combined GitHub-ready GAP/OSCAR script
+#
+# Author/use context: Runqi Liu
+#
+# Paste/run from GAP inside OSCAR after:
+#
+#   using Oscar
+#   GAP.prompt()
+#
+# Contents:
+#   STEP 42H  Fresh supervisor 26D / G2-fingerprint route
+#   STEP 42I  Top-level direct 26D search
+#   STEP 42J  Clean target candidate for 12 + 14-record #4
+#   STEP 43A  Clean supervisor evidence package
+#   STEP 43B  PSL2(13) fingerprint from successful triple
+#   STEP 43C  Conjugacy-class/Brauer fingerprint archive version
+#   STEP 43D  Direct conjugacy-class/Brauer table
+#   STEP 43E  Brauer table decomposition check
+#
+# Practical note:
+#   This is an archive-style one-file upload for GitHub.
+#   The most useful clean route is:
+#       STEP 43A -> STEP 43B -> STEP 43D -> STEP 43E
+#   STEP 42H/42I/42J are kept as development/search evidence.
+#   STEP 43C is kept for archive; STEP 43D is the direct safer
+#   class-table version.
+############################################################
+
+
+
+
+############################################################
+############################################################
+# BEGIN STEP 42H FRESH RESTART: SUPERVISOR 26D / G2-FINGERPRINT ROUTE
+############################################################
+############################################################
+
+
+############################################################
+# STEP 42H FRESH RESTART:
+# SUPERVISOR 26D / G2-FINGERPRINT ROUTE
+#
+# Paste this at a clean GAP prompt after:
+#
+#   using Oscar
+#   GAP.prompt()
+#
+# IMPORTANT:
+#   This is a complete fresh-start script.
+#   It assumes no previous variables exist.
+#
+# Aim:
+#   H = L2(13) = PSL(2,13)
+#   H <= F4(7)
+#
+# Supervisor route:
+#   Work on the 26-dimensional minimal-module candidate:
+#
+#       V26|H = 12 + 14
+#
+#   Build synchronised 26-dimensional models from:
+#
+#       IrreducibleModules(PSL(2,13), GF(7))
+#
+#   Then search inside each GL26(7) image for Walton triples:
+#
+#       g order 13
+#       f order 6
+#       B=<g,f> order 78
+#       f acts on <g> by exponent 10
+#       t order 2
+#       f^t = f^-1
+#       t not in B
+#       t does not normalise <g>
+#       exists b in B with Order(b*t)=3
+#       <g,f,t> has order 1092
+#
+# Expected 26D trace target:
+#
+#       Trace(g)   =  0
+#       Trace(f)   =  1
+#       Trace(f^2) = -1
+#       Trace(f^3) = -2
+#       Trace(t)   = -2
+#
+# Doubling gives old 52D adjoint comparison:
+#
+#       0, 2, -2, -4, -4
+#
+# G2 fingerprint to print:
+#
+#       L(F4)|G2 = L(G2) + V38
+#       dimensions 14 + 38
+#       possible V38|L2(13) = 12 + 12 + 14
+#       total 52 = 14 + 38 = 2*12 + 2*14
+############################################################
+
+LogTo("STEP42H_FRESH_SUPERVISOR_26D_G2_SEARCH_LOG.txt");
+
+Print("\n============================================================\n");
+Print("STEP 42H FRESH RESTART: SUPERVISOR 26D / G2 SEARCH\n");
+Print("============================================================\n");
+
+############################################################
+# PART 0. Basic setup
+############################################################
+
+F7_42H := GF(7);;
+one7_42H := One(F7_42H);;
+zero7_42H := 0 * one7_42H;;
+
+Habs42H := PSL(2,13);;
+
+Print("Abstract H = PSL(2,13)\n");
+Print("Size(Habs42H) = ", Size(Habs42H), "\n");
+
+############################################################
+# PART 1. Load irreducible modules
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 1: IRREDUCIBLE MODULES OVER GF(7)\n");
+Print("============================================================\n");
+
+mods42H := IrreducibleModules(Habs42H, F7_42H);;
+
+Print("Length(mods42H) = ", Length(mods42H), "\n");
+
+if Length(mods42H) <> 2 then
+    Error("Unexpected IrreducibleModules format: expected length 2.");
+fi;
+
+sourceGens42H := mods42H[1];;
+moduleRecords42H := mods42H[2];;
+
+Print("Length(sourceGens42H) = ", Length(sourceGens42H), "\n");
+Print("Length(moduleRecords42H) = ", Length(moduleRecords42H), "\n");
+
+for i42H in [1..Length(moduleRecords42H)] do
+    if not IsRecord(moduleRecords42H[i42H]) then
+        Error("moduleRecords42H entry is not a record.");
+    fi;
+
+    Print("  module record #", i42H,
+          " dimension = ", moduleRecords42H[i42H].dimension,
+          ", generators length = ",
+          Length(moduleRecords42H[i42H].generators), "\n");
+od;
+
+idx12_42H := 2;;
+idx14s_42H := [3,4,5];;
+
+Print("\nUsing 12-dimensional record #", idx12_42H, "\n");
+Print("Testing 14-dimensional records ", idx14s_42H, "\n");
+
+############################################################
+# PART 2. Helper functions
+############################################################
+
+TraceMat42H := function(A)
+    local s, i;
+
+    s := zero7_42H;
+
+    for i in [1..Length(A)] do
+        s := s + A[i][i];
+    od;
+
+    return s;
+end;;
+
+TraceLabel42H := function(x)
+    if x = 0 * one7_42H then
+        return "0";
+    elif x = 1 * one7_42H then
+        return "1";
+    elif x = -1 * one7_42H then
+        return "-1";
+    elif x = 2 * one7_42H then
+        return "2";
+    elif x = -2 * one7_42H then
+        return "-2";
+    elif x = -4 * one7_42H then
+        return "-4";
+    elif x = 3 * one7_42H then
+        return "3";
+    elif x = 4 * one7_42H then
+        return "4";
+    elif x = 5 * one7_42H then
+        return "5";
+    elif x = 6 * one7_42H then
+        return "6";
+    else
+        return String(x);
+    fi;
+end;;
+
+TraceLabel26_42H := function(x)
+    if x = 0 * one7_42H then
+        return "0";
+    elif x = 1 * one7_42H then
+        return "1";
+    elif x = -1 * one7_42H then
+        return "-1";
+    elif x = 2 * one7_42H then
+        return "2";
+    elif x = -2 * one7_42H then
+        return "-2";
+    elif x = -4 * one7_42H then
+        return "-4";
+    else
+        return String(x);
+    fi;
+end;;
+
+TraceLabel52_42H := function(x)
+    if x = 0 * one7_42H then
+        return "0";
+    elif x = 2 * one7_42H then
+        return "2";
+    elif x = -2 * one7_42H then
+        return "-2";
+    elif x = -4 * one7_42H then
+        return "-4";
+    else
+        return String(x);
+    fi;
+end;;
+
+ActionExponentCyclic42H := function(g, x)
+    local gx, k, n;
+
+    n := Order(g);
+    gx := g^x;
+
+    for k in [0..n-1] do
+        if gx = g^k then
+            return k;
+        fi;
+    od;
+
+    return fail;
+end;;
+
+FindBruhatWitness42H := function(g, f, t)
+    local i, j, b, bt, id;
+
+    id := t^0;
+
+    for i in [0..12] do
+        for j in [0..5] do
+            b := g^i * f^j;
+            bt := b * t;
+
+            if bt <> id and bt^3 = id then
+                return rec(i := i, j := j, order := Order(bt));
+            fi;
+        od;
+    od;
+
+    return fail;
+end;;
+
+NormalFormsCount42H := function(g, f)
+    local L, i, j;
+
+    L := [];
+
+    for i in [0..12] do
+        for j in [0..5] do
+            Add(L, g^i * f^j);
+        od;
+    od;
+
+    return Length(Set(L));
+end;;
+
+BlockDiag2_42H := function(A, B)
+    local n, m, C, i, j;
+
+    n := Length(A);
+    m := Length(B);
+
+    C := NullMat(n + m, n + m, F7_42H);
+
+    for i in [1..n] do
+        for j in [1..n] do
+            C[i][j] := A[i][j];
+        od;
+    od;
+
+    for i in [1..m] do
+        for j in [1..m] do
+            C[n+i][n+j] := B[i][j];
+        od;
+    od;
+
+    return C;
+end;;
+
+TopLeftBlock42H := function(A, d)
+    local C, i, j;
+
+    C := NullMat(d, d, F7_42H);
+
+    for i in [1..d] do
+        for j in [1..d] do
+            C[i][j] := A[i][j];
+        od;
+    od;
+
+    return C;
+end;;
+
+BottomRightBlock42H := function(A, d)
+    local n, m, C, i, j;
+
+    n := Length(A);
+    m := n - d;
+
+    C := NullMat(m, m, F7_42H);
+
+    for i in [1..m] do
+        for j in [1..m] do
+            C[i][j] := A[d+i][d+j];
+        od;
+    od;
+
+    return C;
+end;;
+
+IsTarget26Trace42H := function(g, f, t)
+    if TraceMat42H(g) <> 0 * one7_42H then
+        return false;
+    fi;
+
+    if TraceMat42H(f) <> 1 * one7_42H then
+        return false;
+    fi;
+
+    if TraceMat42H(f^2) <> -1 * one7_42H then
+        return false;
+    fi;
+
+    if TraceMat42H(f^3) <> -2 * one7_42H then
+        return false;
+    fi;
+
+    if TraceMat42H(t) <> -2 * one7_42H then
+        return false;
+    fi;
+
+    return true;
+end;;
+
+PrintTraceProfile26_42H := function(g, f, t)
+    Print("  Trace(g)   = ", TraceLabel26_42H(TraceMat42H(g)), "\n");
+    Print("  Trace(f)   = ", TraceLabel26_42H(TraceMat42H(f)), "\n");
+    Print("  Trace(f^2) = ", TraceLabel26_42H(TraceMat42H(f^2)), "\n");
+    Print("  Trace(f^3) = ", TraceLabel26_42H(TraceMat42H(f^3)), "\n");
+    Print("  Trace(t)   = ", TraceLabel26_42H(TraceMat42H(t)), "\n");
+end;;
+
+PrintDoubledProfile52_42H := function(g, f, t)
+    Print("  2*Trace(g)   = ", TraceLabel52_42H(2 * TraceMat42H(g)), "\n");
+    Print("  2*Trace(f)   = ", TraceLabel52_42H(2 * TraceMat42H(f)), "\n");
+    Print("  2*Trace(f^2) = ", TraceLabel52_42H(2 * TraceMat42H(f^2)), "\n");
+    Print("  2*Trace(f^3) = ", TraceLabel52_42H(2 * TraceMat42H(f^3)), "\n");
+    Print("  2*Trace(t)   = ", TraceLabel52_42H(2 * TraceMat42H(t)), "\n");
+end;;
+
+############################################################
+# PART 3. Build synchronised 26D groups
+############################################################
+
+BuildSync26Group42H := function(idx14)
+    local gens12, gens14, gens26, k, H12, H14, H26;
+
+    gens12 := moduleRecords42H[idx12_42H].generators;
+    gens14 := moduleRecords42H[idx14].generators;
+
+    gens26 := [];
+
+    for k in [1..Length(gens12)] do
+        Add(gens26, BlockDiag2_42H(gens12[k], gens14[k]));
+    od;
+
+    H12 := Group(gens12);
+    H14 := Group(gens14);
+    H26 := Group(gens26);
+
+    return rec(
+        idx14 := idx14,
+        gens12 := gens12,
+        gens14 := gens14,
+        gens26 := gens26,
+        H12 := H12,
+        H14 := H14,
+        H26 := H26
+    );
+end;;
+
+############################################################
+# PART 4. Direct enumeration Walton search
+############################################################
+
+FindWaltonTriplesDirect42H := function(HM, modelLabel, maxHits)
+    local sizeHM, elts, order13s, order6s, invols;
+    local L, g, fRaw, f, action, B, t, wit, generatedSize;
+    local countG, countF, targetOk, nf, expUsed;
+
+    sizeHM := Size(HM);
+    elts := Elements(HM);
+
+    order13s := Filtered(elts, x -> Order(x) = 13);
+    order6s := Filtered(elts, x -> Order(x) = 6);
+    invols := Filtered(elts, x -> Order(x) = 2);
+
+    Print("\nDirect search in ", modelLabel, "\n");
+    Print("  Size(HM)         = ", sizeHM, "\n");
+    Print("  total elements   = ", Length(elts), "\n");
+    Print("  order-13 elements= ", Length(order13s), "\n");
+    Print("  order-6 elements = ", Length(order6s), "\n");
+    Print("  involutions      = ", Length(invols), "\n");
+
+    L := [];
+    countG := 0;
+
+    for g in order13s do
+        countG := countG + 1;
+
+        if countG mod 20 = 0 then
+            Print("  progress: g-count = ", countG,
+                  " / ", Length(order13s),
+                  ", hits = ", Length(L),
+                  ", Runtime ms = ", Runtime(), "\n");
+        fi;
+
+        for fRaw in order6s do
+            action := ActionExponentCyclic42H(g, fRaw);
+
+            if action = 10 or action = 4 then
+
+                if action = 10 then
+                    f := fRaw;
+                    expUsed := 10;
+                else
+                    f := fRaw^-1;
+                    expUsed := 10;
+                fi;
+
+                if ActionExponentCyclic42H(g, f) = 10 then
+                    B := Group(g, f);
+
+                    if Size(B) = 78 then
+                        nf := NormalFormsCount42H(g, f);
+
+                        if nf = 78 then
+                            for t in invols do
+                                if f^t = f^-1
+                                   and not (t in B)
+                                   and ActionExponentCyclic42H(g, t) = fail then
+
+                                    wit := FindBruhatWitness42H(g, f, t);
+
+                                    if wit <> fail then
+                                        generatedSize := Size(Group(g, f, t));
+
+                                        if generatedSize = sizeHM then
+                                            targetOk := IsTarget26Trace42H(g, f, t);
+
+                                            Add(L, rec(
+                                                g := g,
+                                                f := f,
+                                                t := t,
+                                                B := B,
+                                                witness := wit,
+                                                targetTrace := targetOk,
+                                                normalForms := nf
+                                            ));
+
+                                            Print("\n  HIT #", Length(L),
+                                                  " in ", modelLabel, "\n");
+                                            Print("    target 26D trace? ", targetOk, "\n");
+                                            Print("    action exponent f on <g> = ",
+                                                  ActionExponentCyclic42H(g, f), "\n");
+                                            Print("    witness b = g^", wit.i,
+                                                  " * f^", wit.j, "\n");
+                                            Print("    Order(b*t) = ",
+                                                  Order((g^wit.i * f^wit.j) * t), "\n");
+                                            Print("    Order(g*t) = ", Order(g*t), "\n");
+                                            Print("    Size(B) = ", Size(B), "\n");
+                                            Print("    normal forms in B = ", nf, "\n");
+                                            Print("    Size(<g,f,t>) = ", generatedSize, "\n");
+                                            Print("    Trace profile 26D:\n");
+                                            PrintTraceProfile26_42H(g, f, t);
+
+                                            if Length(L) >= maxHits then
+                                                return L;
+                                            fi;
+                                        fi;
+                                    fi;
+                                fi;
+                            od;
+                        fi;
+                    fi;
+                fi;
+            fi;
+        od;
+    od;
+
+    return L;
+end;;
+
+############################################################
+# PART 5. Run all three 12+14 models
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 5: BUILD AND SEARCH ALL THREE 12+14 MODELS\n");
+Print("============================================================\n");
+
+MAX_HITS_PER_MODEL_42H := 20;;
+
+SyncResults42H := [];;
+
+for idx14_42H in idx14s_42H do
+    Print("\n------------------------------------------------------------\n");
+    Print("Building synchronised model: 12-record #", idx12_42H,
+          " plus 14-record #", idx14_42H, "\n");
+
+    sync42H := BuildSync26Group42H(idx14_42H);;
+
+    Print("  Size(H12) = ", Size(sync42H.H12), "\n");
+    Print("  Size(H14) = ", Size(sync42H.H14), "\n");
+    Print("  Size(H26) = ", Size(sync42H.H26), "\n");
+
+    hits42H := FindWaltonTriplesDirect42H(
+        sync42H.H26,
+        Concatenation("12+14 record #", String(idx14_42H)),
+        MAX_HITS_PER_MODEL_42H
+    );;
+
+    Print("\nFinished model 12 + 14-record #", idx14_42H, "\n");
+    Print("  Number of Walton hits = ", Length(hits42H), "\n");
+
+    Add(SyncResults42H, rec(
+        idx14 := idx14_42H,
+        sync := sync42H,
+        hits := hits42H
+    ));
+od;
+
+############################################################
+# PART 6. Choose target-trace candidate
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 6: CHOOSE TARGET-TRACE CANDIDATE\n");
+Print("============================================================\n");
+
+TargetHits42H := [];;
+
+for rec42H in SyncResults42H do
+    for hit42H in rec42H.hits do
+        if hit42H.targetTrace = true then
+            Add(TargetHits42H, rec(
+                idx14 := rec42H.idx14,
+                sync := rec42H.sync,
+                hit := hit42H
+            ));
+        fi;
+    od;
+od;
+
+Print("Total Walton hits across all models = ",
+      Sum(List(SyncResults42H, r -> Length(r.hits))), "\n");
+Print("Total target-trace 26D hits = ", Length(TargetHits42H), "\n");
+
+if Length(TargetHits42H) = 0 then
+    Print("\nNo exact target-trace hit found.\n");
+    Print("Choosing first available Walton hit for diagnostic output.\n");
+
+    chosen42H := fail;;
+
+    for rec42H in SyncResults42H do
+        if chosen42H = fail and Length(rec42H.hits) > 0 then
+            chosen42H := rec(
+                idx14 := rec42H.idx14,
+                sync := rec42H.sync,
+                hit := rec42H.hits[1]
+            );;
+        fi;
+    od;
+
+    if chosen42H = fail then
+        Error("No Walton hit found in any of the three synchronised 26D models.");
+    fi;
+else
+    chosen42H := TargetHits42H[1];;
+fi;
+
+idx14_sup42H := chosen42H.idx14;;
+sync_sup42H := chosen42H.sync;;
+hit_sup42H := chosen42H.hit;;
+
+H12_sup42H := sync_sup42H.H12;;
+H14_sup42H := sync_sup42H.H14;;
+H26_sup42H := sync_sup42H.H26;;
+
+g26_sup42H := hit_sup42H.g;;
+f26_sup42H := hit_sup42H.f;;
+t26_sup42H := hit_sup42H.t;;
+B26_sup42H := hit_sup42H.B;;
+
+g12_sup42H := TopLeftBlock42H(g26_sup42H, 12);;
+f12_sup42H := TopLeftBlock42H(f26_sup42H, 12);;
+t12_sup42H := TopLeftBlock42H(t26_sup42H, 12);;
+
+g14_sup42H := BottomRightBlock42H(g26_sup42H, 12);;
+f14_sup42H := BottomRightBlock42H(f26_sup42H, 12);;
+t14_sup42H := BottomRightBlock42H(t26_sup42H, 12);;
+
+B12_sup42H := Group(g12_sup42H, f12_sup42H);;
+B14_sup42H := Group(g14_sup42H, f14_sup42H);;
+
+Print("\nChosen candidate uses 14-record #", idx14_sup42H, "\n");
+
+############################################################
+# PART 7. Final Walton checks
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 7: FINAL WALTON CHECKS\n");
+Print("============================================================\n");
+
+Print("Final 26D group checks:\n");
+Print("  Size(H26_sup42H) = ", Size(H26_sup42H), "\n");
+Print("  Size(B26_sup42H) = ", Size(B26_sup42H), "\n");
+Print("  Order(g26_sup42H) = ", Order(g26_sup42H), "\n");
+Print("  Order(f26_sup42H) = ", Order(f26_sup42H), "\n");
+Print("  Order(t26_sup42H) = ", Order(t26_sup42H), "\n");
+Print("  Size(<g,f,t>) = ",
+      Size(Group(g26_sup42H, f26_sup42H, t26_sup42H)), "\n");
+Print("  Normal forms in B = ",
+      NormalFormsCount42H(g26_sup42H, f26_sup42H), "\n");
+
+Print("\nWalton relation checks:\n");
+Print("  action exponent of f on <g> = ",
+      ActionExponentCyclic42H(g26_sup42H, f26_sup42H), "\n");
+Print("  f^t = f^-1 ? ",
+      f26_sup42H^t26_sup42H = f26_sup42H^-1, "\n");
+Print("  t in B ? ", t26_sup42H in B26_sup42H, "\n");
+Print("  t normalises <g> ? ",
+      ActionExponentCyclic42H(g26_sup42H, t26_sup42H) <> fail, "\n");
+
+witFinal42H := FindBruhatWitness42H(g26_sup42H, f26_sup42H, t26_sup42H);;
+
+if witFinal42H = fail then
+    Print("  Bruhat witness: none\n");
+else
+    Print("  Bruhat witness: b = g^",
+          witFinal42H.i, " * f^", witFinal42H.j, "\n");
+    Print("  Order(b*t) = ",
+          Order((g26_sup42H^witFinal42H.i
+                * f26_sup42H^witFinal42H.j)
+                * t26_sup42H), "\n");
+fi;
+
+Print("\nClean 26D trace profile:\n");
+PrintTraceProfile26_42H(g26_sup42H, f26_sup42H, t26_sup42H);
+
+Print("\nClean doubled 52D comparison profile:\n");
+PrintDoubledProfile52_42H(g26_sup42H, f26_sup42H, t26_sup42H);
+
+############################################################
+# PART 8. Separate 12D and 14D block checks
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 8: SEPARATE 12D AND 14D BLOCK CHECKS\n");
+Print("============================================================\n");
+
+Print("\n12D block checks:\n");
+Print("  Size(<g12,f12,t12>) = ",
+      Size(Group(g12_sup42H, f12_sup42H, t12_sup42H)), "\n");
+Print("  Size(B12) = ", Size(B12_sup42H), "\n");
+Print("  Order(g12) = ", Order(g12_sup42H), "\n");
+Print("  Order(f12) = ", Order(f12_sup42H), "\n");
+Print("  Order(t12) = ", Order(t12_sup42H), "\n");
+Print("  f12^t12 = f12^-1 ? ",
+      f12_sup42H^t12_sup42H = f12_sup42H^-1, "\n");
+Print("  Trace(g12), Trace(f12), Trace(f12^2), Trace(f12^3), Trace(t12) = ",
+      TraceLabel42H(TraceMat42H(g12_sup42H)), ", ",
+      TraceLabel42H(TraceMat42H(f12_sup42H)), ", ",
+      TraceLabel42H(TraceMat42H(f12_sup42H^2)), ", ",
+      TraceLabel42H(TraceMat42H(f12_sup42H^3)), ", ",
+      TraceLabel42H(TraceMat42H(t12_sup42H)), "\n");
+
+Print("\n14D block checks:\n");
+Print("  Size(<g14,f14,t14>) = ",
+      Size(Group(g14_sup42H, f14_sup42H, t14_sup42H)), "\n");
+Print("  Size(B14) = ", Size(B14_sup42H), "\n");
+Print("  Order(g14) = ", Order(g14_sup42H), "\n");
+Print("  Order(f14) = ", Order(f14_sup42H), "\n");
+Print("  Order(t14) = ", Order(t14_sup42H), "\n");
+Print("  f14^t14 = f14^-1 ? ",
+      f14_sup42H^t14_sup42H = f14_sup42H^-1, "\n");
+Print("  Trace(g14), Trace(f14), Trace(f14^2), Trace(f14^3), Trace(t14) = ",
+      TraceLabel42H(TraceMat42H(g14_sup42H)), ", ",
+      TraceLabel42H(TraceMat42H(f14_sup42H)), ", ",
+      TraceLabel42H(TraceMat42H(f14_sup42H^2)), ", ",
+      TraceLabel42H(TraceMat42H(f14_sup42H^3)), ", ",
+      TraceLabel42H(TraceMat42H(t14_sup42H)), "\n");
+
+############################################################
+# PART 9. G2 fingerprint
+############################################################
+
+PrintTraceLineG242H := function(name, x12, x14)
+    local tr12, tr14, tr26, tr38, tr52;
+
+    tr12 := TraceMat42H(x12);
+    tr14 := TraceMat42H(x14);
+    tr26 := tr12 + tr14;
+
+    # Supervisor's possible G2 line:
+    # L(F4)|G2 = L(G2) + V38, dimensions 14 + 38.
+    # Possible V38|H = 12 + 12 + 14.
+    # Then total L(F4)|H = 14 + (12+12+14) = 2*12 + 2*14.
+    tr38 := 2 * tr12 + tr14;
+    tr52 := tr14 + tr38;
+
+    Print("  ", name, "\n");
+    Print("      trace on 12              = ", TraceLabel42H(tr12), "\n");
+    Print("      trace on 14              = ", TraceLabel42H(tr14), "\n");
+    Print("      trace on 26 = 12+14      = ", TraceLabel26_42H(tr26), "\n");
+    Print("      G2 test: L(G2) 14-part   = ", TraceLabel42H(tr14), "\n");
+    Print("      G2 test: V38=12+12+14    = ", TraceLabel42H(tr38), "\n");
+    Print("      total 52 = 14+38         = ", TraceLabel52_42H(tr52), "\n");
+end;;
+
+Print("\n============================================================\n");
+Print("PART 9: G2 FINGERPRINT COMPARISON\n");
+Print("============================================================\n");
+
+Print("Supervisor's possible line:\n");
+Print("  p=7, G2 <= F4, and L2(13) <= G2.\n");
+Print("  L(F4)|G2 may be 14 + 38.\n");
+Print("  Possible V38|L2(13) may be 12 + 12 + 14.\n");
+Print("  Then L(F4)|L2(13) would be 2*12 + 2*14.\n\n");
+
+PrintTraceLineG242H("g", g12_sup42H, g14_sup42H);
+PrintTraceLineG242H("f", f12_sup42H, f14_sup42H);
+PrintTraceLineG242H("f^2", f12_sup42H^2, f14_sup42H^2);
+PrintTraceLineG242H("f^3", f12_sup42H^3, f14_sup42H^3);
+PrintTraceLineG242H("t", t12_sup42H, t14_sup42H);
+
+############################################################
+# PART 10. Summary of all hits
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 10: SUMMARY OF ALL MODEL HITS\n");
+Print("============================================================\n");
+
+for rec42H in SyncResults42H do
+    Print("\n14-record #", rec42H.idx14, "\n");
+    Print("  total hits = ", Length(rec42H.hits), "\n");
+
+    for i42H in [1..Length(rec42H.hits)] do
+        Print("    hit #", i42H,
+              ": targetTrace=", rec42H.hits[i42H].targetTrace,
+              ", witness g^", rec42H.hits[i42H].witness.i,
+              " f^", rec42H.hits[i42H].witness.j,
+              ", Trace(g,f,f2,f3,t)=",
+              TraceLabel26_42H(TraceMat42H(rec42H.hits[i42H].g)), ",",
+              TraceLabel26_42H(TraceMat42H(rec42H.hits[i42H].f)), ",",
+              TraceLabel26_42H(TraceMat42H(rec42H.hits[i42H].f^2)), ",",
+              TraceLabel26_42H(TraceMat42H(rec42H.hits[i42H].f^3)), ",",
+              TraceLabel26_42H(TraceMat42H(rec42H.hits[i42H].t)), "\n");
+    od;
+od;
+
+############################################################
+# PART 11. Final saved variables
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 11: FINAL SAVED VARIABLES\n");
+Print("============================================================\n");
+
+Print("Saved variables in this fresh session:\n");
+Print("  Habs42H\n");
+Print("  mods42H, sourceGens42H, moduleRecords42H\n");
+Print("  SyncResults42H, TargetHits42H, chosen42H\n");
+Print("  H12_sup42H, g12_sup42H, f12_sup42H, t12_sup42H, B12_sup42H\n");
+Print("  H14_sup42H, g14_sup42H, f14_sup42H, t14_sup42H, B14_sup42H\n");
+Print("  H26_sup42H, g26_sup42H, f26_sup42H, t26_sup42H, B26_sup42H\n");
+
+Print("\nFinal interpretation target:\n");
+Print("  This is a fully fresh generator-level synchronised 12+14 search.\n");
+Print("  It follows the supervisor's 26-dimensional minimal-module route.\n");
+Print("  It does not use old variables and does not use the failed homomorphism route.\n");
+Print("  A target profile 0,1,-1,-2,-2 on V26 doubles to\n");
+Print("  0,2,-2,-4,-4 on the old 52-dimensional adjoint comparison.\n");
+
+Print("\n============================================================\n");
+Print("STEP 42H FINISHED\n");
+Print("============================================================\n");
+
+LogTo();
+
+
+
+
+############################################################
+############################################################
+# BEGIN STEP 42I FRESH RESTART: TOP-LEVEL DIRECT 26D SEARCH
+############################################################
+############################################################
+
+
+############################################################
+# STEP 42I FRESH RESTART:
+# TOP-LEVEL DIRECT 26D SEARCH, NO BIG SEARCH FUNCTION
+#
+# Paste after:
+#   using Oscar
+#   GAP.prompt()
+#
+# This rebuilds everything from zero.
+# It avoids the failed function-definition issue from Step 42H.
+############################################################
+
+LogTo("STEP42I_TOP_LEVEL_DIRECT_26D_SEARCH_LOG.txt");
+
+Print("\n============================================================\n");
+Print("STEP 42I FRESH RESTART: TOP-LEVEL DIRECT 26D SEARCH\n");
+Print("============================================================\n");
+
+############################################################
+# PART 0. Basic setup
+############################################################
+
+F7_42I := GF(7);;
+one7_42I := One(F7_42I);;
+zero7_42I := 0 * one7_42I;;
+
+Habs42I := PSL(2,13);;
+
+Print("Size(PSL(2,13)) = ", Size(Habs42I), "\n");
+
+############################################################
+# PART 1. Load GF(7) modules
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 1: LOAD IRREDUCIBLE MODULES\n");
+Print("============================================================\n");
+
+mods42I := IrreducibleModules(Habs42I, F7_42I);;
+
+sourceGens42I := mods42I[1];;
+moduleRecords42I := mods42I[2];;
+
+Print("Length(mods42I) = ", Length(mods42I), "\n");
+Print("Length(sourceGens42I) = ", Length(sourceGens42I), "\n");
+Print("Length(moduleRecords42I) = ", Length(moduleRecords42I), "\n");
+
+for i42I in [1..Length(moduleRecords42I)] do
+    Print("  module record #", i42I,
+          " dimension = ", moduleRecords42I[i42I].dimension,
+          ", generators length = ",
+          Length(moduleRecords42I[i42I].generators), "\n");
+od;
+
+idx12_42I := 2;;
+idx14s_42I := [3,4,5];;
+
+Print("\nUsing 12-record #", idx12_42I, "\n");
+Print("Testing 14-records ", idx14s_42I, "\n");
+
+############################################################
+# PART 2. Helper functions
+############################################################
+
+TraceMat42I := function(A)
+    local s, i;
+
+    s := zero7_42I;
+
+    for i in [1..Length(A)] do
+        s := s + A[i][i];
+    od;
+
+    return s;
+end;;
+
+TraceLabel42I := function(x)
+    if x = 0 * one7_42I then
+        return "0";
+    elif x = 1 * one7_42I then
+        return "1";
+    elif x = -1 * one7_42I then
+        return "-1";
+    elif x = 2 * one7_42I then
+        return "2";
+    elif x = -2 * one7_42I then
+        return "-2";
+    elif x = -4 * one7_42I then
+        return "-4";
+    else
+        return String(x);
+    fi;
+end;;
+
+TraceLabel26_42I := function(x)
+    if x = 0 * one7_42I then
+        return "0";
+    elif x = 1 * one7_42I then
+        return "1";
+    elif x = -1 * one7_42I then
+        return "-1";
+    elif x = 2 * one7_42I then
+        return "2";
+    elif x = -2 * one7_42I then
+        return "-2";
+    elif x = -4 * one7_42I then
+        return "-4";
+    else
+        return String(x);
+    fi;
+end;;
+
+TraceLabel52_42I := function(x)
+    if x = 0 * one7_42I then
+        return "0";
+    elif x = 2 * one7_42I then
+        return "2";
+    elif x = -2 * one7_42I then
+        return "-2";
+    elif x = -4 * one7_42I then
+        return "-4";
+    else
+        return String(x);
+    fi;
+end;;
+
+ActionExponentCyclic42I := function(g, x)
+    local gx, k, n;
+
+    n := Order(g);
+    gx := g^x;
+
+    for k in [0..n-1] do
+        if gx = g^k then
+            return k;
+        fi;
+    od;
+
+    return fail;
+end;;
+
+FindBruhatWitness42I := function(g, f, t)
+    local i, j, b, bt, id;
+
+    id := t^0;
+
+    for i in [0..12] do
+        for j in [0..5] do
+            b := g^i * f^j;
+            bt := b * t;
+
+            if bt <> id and bt^3 = id then
+                return rec(i := i, j := j, order := Order(bt));
+            fi;
+        od;
+    od;
+
+    return fail;
+end;;
+
+NormalFormsCount42I := function(g, f)
+    local L, i, j;
+
+    L := [];
+
+    for i in [0..12] do
+        for j in [0..5] do
+            Add(L, g^i * f^j);
+        od;
+    od;
+
+    return Length(Set(L));
+end;;
+
+BlockDiag2_42I := function(A, B)
+    local n, m, C, i, j;
+
+    n := Length(A);
+    m := Length(B);
+
+    C := NullMat(n + m, n + m, F7_42I);
+
+    for i in [1..n] do
+        for j in [1..n] do
+            C[i][j] := A[i][j];
+        od;
+    od;
+
+    for i in [1..m] do
+        for j in [1..m] do
+            C[n+i][n+j] := B[i][j];
+        od;
+    od;
+
+    return C;
+end;;
+
+TopLeftBlock42I := function(A, d)
+    local C, i, j;
+
+    C := NullMat(d, d, F7_42I);
+
+    for i in [1..d] do
+        for j in [1..d] do
+            C[i][j] := A[i][j];
+        od;
+    od;
+
+    return C;
+end;;
+
+BottomRightBlock42I := function(A, d)
+    local n, m, C, i, j;
+
+    n := Length(A);
+    m := n - d;
+
+    C := NullMat(m, m, F7_42I);
+
+    for i in [1..m] do
+        for j in [1..m] do
+            C[i][j] := A[d+i][d+j];
+        od;
+    od;
+
+    return C;
+end;;
+
+IsTarget26Trace42I := function(g, f, t)
+    if TraceMat42I(g) <> 0 * one7_42I then
+        return false;
+    fi;
+
+    if TraceMat42I(f) <> 1 * one7_42I then
+        return false;
+    fi;
+
+    if TraceMat42I(f^2) <> -1 * one7_42I then
+        return false;
+    fi;
+
+    if TraceMat42I(f^3) <> -2 * one7_42I then
+        return false;
+    fi;
+
+    if TraceMat42I(t) <> -2 * one7_42I then
+        return false;
+    fi;
+
+    return true;
+end;;
+
+PrintTraceProfile26_42I := function(g, f, t)
+    Print("  Trace(g)   = ", TraceLabel26_42I(TraceMat42I(g)), "\n");
+    Print("  Trace(f)   = ", TraceLabel26_42I(TraceMat42I(f)), "\n");
+    Print("  Trace(f^2) = ", TraceLabel26_42I(TraceMat42I(f^2)), "\n");
+    Print("  Trace(f^3) = ", TraceLabel26_42I(TraceMat42I(f^3)), "\n");
+    Print("  Trace(t)   = ", TraceLabel26_42I(TraceMat42I(t)), "\n");
+end;;
+
+PrintDoubledProfile52_42I := function(g, f, t)
+    Print("  2*Trace(g)   = ", TraceLabel52_42I(2 * TraceMat42I(g)), "\n");
+    Print("  2*Trace(f)   = ", TraceLabel52_42I(2 * TraceMat42I(f)), "\n");
+    Print("  2*Trace(f^2) = ", TraceLabel52_42I(2 * TraceMat42I(f^2)), "\n");
+    Print("  2*Trace(f^3) = ", TraceLabel52_42I(2 * TraceMat42I(f^3)), "\n");
+    Print("  2*Trace(t)   = ", TraceLabel52_42I(2 * TraceMat42I(t)), "\n");
+end;;
+
+############################################################
+# PART 3. Build synchronised groups
+############################################################
+
+BuildSync26Group42I := function(idx14)
+    local gens12, gens14, gens26, k, H12, H14, H26;
+
+    gens12 := moduleRecords42I[idx12_42I].generators;
+    gens14 := moduleRecords42I[idx14].generators;
+
+    gens26 := [];
+
+    for k in [1..Length(gens12)] do
+        Add(gens26, BlockDiag2_42I(gens12[k], gens14[k]));
+    od;
+
+    H12 := Group(gens12);
+    H14 := Group(gens14);
+    H26 := Group(gens26);
+
+    return rec(
+        idx14 := idx14,
+        gens12 := gens12,
+        gens14 := gens14,
+        gens26 := gens26,
+        H12 := H12,
+        H14 := H14,
+        H26 := H26
+    );
+end;;
+
+############################################################
+# PART 4. Direct top-level search through all three 26D models
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 4: TOP-LEVEL DIRECT SEARCH\n");
+Print("============================================================\n");
+
+MAX_HITS_PER_MODEL_42I := 20;;
+
+SyncResults42I := [];;
+TargetHits42I := [];;
+
+for idx14_42I in idx14s_42I do
+
+    Print("\n------------------------------------------------------------\n");
+    Print("Building synchronised model: 12-record #", idx12_42I,
+          " plus 14-record #", idx14_42I, "\n");
+
+    sync42I := BuildSync26Group42I(idx14_42I);;
+
+    H26_current42I := sync42I.H26;;
+
+    Print("  Size(H12) = ", Size(sync42I.H12), "\n");
+    Print("  Size(H14) = ", Size(sync42I.H14), "\n");
+    Print("  Size(H26) = ", Size(sync42I.H26), "\n");
+
+    elts42I := Elements(H26_current42I);;
+    order13s42I := Filtered(elts42I, x -> Order(x) = 13);;
+    order6s42I := Filtered(elts42I, x -> Order(x) = 6);;
+    invols42I := Filtered(elts42I, x -> Order(x) = 2);;
+
+    Print("  total elements = ", Length(elts42I), "\n");
+    Print("  order-13 elements = ", Length(order13s42I), "\n");
+    Print("  order-6 elements = ", Length(order6s42I), "\n");
+    Print("  involutions = ", Length(invols42I), "\n");
+
+    hits42I := [];;
+    pairCount42I := 0;;
+    goodPairCount42I := 0;;
+    gCount42I := 0;;
+
+    for g42I in order13s42I do
+        gCount42I := gCount42I + 1;
+
+        if gCount42I mod 20 = 0 then
+            Print("  progress: g-count = ", gCount42I,
+                  " / ", Length(order13s42I),
+                  ", good 13:6 pairs = ", goodPairCount42I,
+                  ", hits = ", Length(hits42I),
+                  ", Runtime ms = ", Runtime(), "\n");
+        fi;
+
+        if Length(hits42I) < MAX_HITS_PER_MODEL_42I then
+
+            for fRaw42I in order6s42I do
+
+                if Length(hits42I) < MAX_HITS_PER_MODEL_42I then
+
+                    action42I := ActionExponentCyclic42I(g42I, fRaw42I);;
+
+                    if action42I = 10 or action42I = 4 then
+
+                        if action42I = 10 then
+                            f42I := fRaw42I;;
+                        else
+                            f42I := fRaw42I^-1;;
+                        fi;
+
+                        if ActionExponentCyclic42I(g42I, f42I) = 10 then
+
+                            B42I := Group(g42I, f42I);;
+
+                            if Size(B42I) = 78 then
+
+                                nf42I := NormalFormsCount42I(g42I, f42I);;
+
+                                if nf42I = 78 then
+
+                                    goodPairCount42I := goodPairCount42I + 1;
+
+                                    for t42I in invols42I do
+
+                                        if Length(hits42I) < MAX_HITS_PER_MODEL_42I then
+
+                                            if f42I^t42I = f42I^-1
+                                               and not (t42I in B42I)
+                                               and ActionExponentCyclic42I(g42I, t42I) = fail then
+
+                                                wit42I := FindBruhatWitness42I(g42I, f42I, t42I);;
+
+                                                if wit42I <> fail then
+
+                                                    genSize42I := Size(Group(g42I, f42I, t42I));;
+
+                                                    if genSize42I = Size(H26_current42I) then
+
+                                                        targetOk42I := IsTarget26Trace42I(g42I, f42I, t42I);;
+
+                                                        hit42I := rec(
+                                                            g := g42I,
+                                                            f := f42I,
+                                                            t := t42I,
+                                                            B := B42I,
+                                                            witness := wit42I,
+                                                            targetTrace := targetOk42I,
+                                                            normalForms := nf42I,
+                                                            idx14 := idx14_42I
+                                                        );;
+
+                                                        Add(hits42I, hit42I);
+
+                                                        if targetOk42I = true then
+                                                            Add(TargetHits42I, rec(
+                                                                idx14 := idx14_42I,
+                                                                sync := sync42I,
+                                                                hit := hit42I
+                                                            ));
+                                                        fi;
+
+                                                        Print("\n  HIT #", Length(hits42I),
+                                                              " for 14-record #", idx14_42I, "\n");
+                                                        Print("    target 26D trace? ", targetOk42I, "\n");
+                                                        Print("    action exponent f on <g> = ",
+                                                              ActionExponentCyclic42I(g42I, f42I), "\n");
+                                                        Print("    witness b = g^", wit42I.i,
+                                                              " * f^", wit42I.j, "\n");
+                                                        Print("    Order(b*t) = ",
+                                                              Order((g42I^wit42I.i * f42I^wit42I.j) * t42I), "\n");
+                                                        Print("    Order(g*t) = ", Order(g42I * t42I), "\n");
+                                                        Print("    Size(B) = ", Size(B42I), "\n");
+                                                        Print("    normal forms in B = ", nf42I, "\n");
+                                                        Print("    Size(<g,f,t>) = ", genSize42I, "\n");
+                                                        Print("    Trace profile 26D:\n");
+                                                        PrintTraceProfile26_42I(g42I, f42I, t42I);
+
+                                                    fi;
+                                                fi;
+                                            fi;
+                                        fi;
+                                    od;
+                                fi;
+                            fi;
+                        fi;
+                    fi;
+                fi;
+            od;
+        fi;
+    od;
+
+    Print("\nFinished model 12 + 14-record #", idx14_42I, "\n");
+    Print("  good 13:6 pairs found = ", goodPairCount42I, "\n");
+    Print("  Walton hits found = ", Length(hits42I), "\n");
+
+    Add(SyncResults42I, rec(
+        idx14 := idx14_42I,
+        sync := sync42I,
+        hits := hits42I,
+        goodPairCount := goodPairCount42I
+    ));
+
+od;
+
+############################################################
+# PART 5. Choose final candidate if available
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 5: CHOOSE FINAL CANDIDATE\n");
+Print("============================================================\n");
+
+totalHits42I := Sum(List(SyncResults42I, r -> Length(r.hits)));;
+
+Print("Total Walton hits across all models = ", totalHits42I, "\n");
+Print("Total target-trace 26D hits = ", Length(TargetHits42I), "\n");
+
+chosen42I := fail;;
+
+if Length(TargetHits42I) > 0 then
+    chosen42I := TargetHits42I[1];;
+    Print("Choosing first target-trace hit.\n");
+else
+    Print("No exact target-trace hit found.\n");
+    Print("Trying to choose first available Walton hit for diagnostics.\n");
+
+    for rec42I in SyncResults42I do
+        if chosen42I = fail and Length(rec42I.hits) > 0 then
+            chosen42I := rec(
+                idx14 := rec42I.idx14,
+                sync := rec42I.sync,
+                hit := rec42I.hits[1]
+            );;
+        fi;
+    od;
+fi;
+
+if chosen42I = fail then
+
+    Print("\nNo Walton hit found in this top-level direct search.\n");
+    Print("This is a real negative for this exact search condition,\n");
+    Print("but not a proof that the supervisor route fails.\n");
+    Print("Next step would be to relax exact inversion or search by abstract word synchronisation.\n");
+
+else
+
+    idx14_sup42I := chosen42I.idx14;;
+    sync_sup42I := chosen42I.sync;;
+    hit_sup42I := chosen42I.hit;;
+
+    H12_sup42I := sync_sup42I.H12;;
+    H14_sup42I := sync_sup42I.H14;;
+    H26_sup42I := sync_sup42I.H26;;
+
+    g26_sup42I := hit_sup42I.g;;
+    f26_sup42I := hit_sup42I.f;;
+    t26_sup42I := hit_sup42I.t;;
+    B26_sup42I := hit_sup42I.B;;
+
+    g12_sup42I := TopLeftBlock42I(g26_sup42I, 12);;
+    f12_sup42I := TopLeftBlock42I(f26_sup42I, 12);;
+    t12_sup42I := TopLeftBlock42I(t26_sup42I, 12);;
+
+    g14_sup42I := BottomRightBlock42I(g26_sup42I, 12);;
+    f14_sup42I := BottomRightBlock42I(f26_sup42I, 12);;
+    t14_sup42I := BottomRightBlock42I(t26_sup42I, 12);;
+
+    B12_sup42I := Group(g12_sup42I, f12_sup42I);;
+    B14_sup42I := Group(g14_sup42I, f14_sup42I);;
+
+    Print("\nChosen candidate uses 14-record #", idx14_sup42I, "\n");
+
+    ############################################################
+    # PART 6. Final Walton checks
+    ############################################################
+
+    Print("\n============================================================\n");
+    Print("PART 6: FINAL WALTON CHECKS\n");
+    Print("============================================================\n");
+
+    Print("Final 26D group checks:\n");
+    Print("  Size(H26_sup42I) = ", Size(H26_sup42I), "\n");
+    Print("  Size(B26_sup42I) = ", Size(B26_sup42I), "\n");
+    Print("  Order(g26_sup42I) = ", Order(g26_sup42I), "\n");
+    Print("  Order(f26_sup42I) = ", Order(f26_sup42I), "\n");
+    Print("  Order(t26_sup42I) = ", Order(t26_sup42I), "\n");
+    Print("  Size(<g,f,t>) = ",
+          Size(Group(g26_sup42I, f26_sup42I, t26_sup42I)), "\n");
+    Print("  Normal forms in B = ",
+          NormalFormsCount42I(g26_sup42I, f26_sup42I), "\n");
+
+    Print("\nWalton relation checks:\n");
+    Print("  action exponent of f on <g> = ",
+          ActionExponentCyclic42I(g26_sup42I, f26_sup42I), "\n");
+    Print("  f^t = f^-1 ? ",
+          f26_sup42I^t26_sup42I = f26_sup42I^-1, "\n");
+    Print("  t in B ? ", t26_sup42I in B26_sup42I, "\n");
+    Print("  t normalises <g> ? ",
+          ActionExponentCyclic42I(g26_sup42I, t26_sup42I) <> fail, "\n");
+
+    witFinal42I := FindBruhatWitness42I(g26_sup42I, f26_sup42I, t26_sup42I);;
+
+    if witFinal42I = fail then
+        Print("  Bruhat witness: none\n");
+    else
+        Print("  Bruhat witness: b = g^",
+              witFinal42I.i, " * f^", witFinal42I.j, "\n");
+        Print("  Order(b*t) = ",
+              Order((g26_sup42I^witFinal42I.i
+                    * f26_sup42I^witFinal42I.j)
+                    * t26_sup42I), "\n");
+    fi;
+
+    Print("\nClean 26D trace profile:\n");
+    PrintTraceProfile26_42I(g26_sup42I, f26_sup42I, t26_sup42I);
+
+    Print("\nClean doubled 52D comparison profile:\n");
+    PrintDoubledProfile52_42I(g26_sup42I, f26_sup42I, t26_sup42I);
+
+    ############################################################
+    # PART 7. Separate 12D and 14D block checks
+    ############################################################
+
+    Print("\n============================================================\n");
+    Print("PART 7: SEPARATE 12D AND 14D BLOCK CHECKS\n");
+    Print("============================================================\n");
+
+    Print("\n12D block checks:\n");
+    Print("  Size(<g12,f12,t12>) = ",
+          Size(Group(g12_sup42I, f12_sup42I, t12_sup42I)), "\n");
+    Print("  Size(B12) = ", Size(B12_sup42I), "\n");
+    Print("  Order(g12) = ", Order(g12_sup42I), "\n");
+    Print("  Order(f12) = ", Order(f12_sup42I), "\n");
+    Print("  Order(t12) = ", Order(t12_sup42I), "\n");
+    Print("  f12^t12 = f12^-1 ? ",
+          f12_sup42I^t12_sup42I = f12_sup42I^-1, "\n");
+    Print("  Trace(g12), Trace(f12), Trace(f12^2), Trace(f12^3), Trace(t12) = ",
+          TraceLabel42I(TraceMat42I(g12_sup42I)), ", ",
+          TraceLabel42I(TraceMat42I(f12_sup42I)), ", ",
+          TraceLabel42I(TraceMat42I(f12_sup42I^2)), ", ",
+          TraceLabel42I(TraceMat42I(f12_sup42I^3)), ", ",
+          TraceLabel42I(TraceMat42I(t12_sup42I)), "\n");
+
+    Print("\n14D block checks:\n");
+    Print("  Size(<g14,f14,t14>) = ",
+          Size(Group(g14_sup42I, f14_sup42I, t14_sup42I)), "\n");
+    Print("  Size(B14) = ", Size(B14_sup42I), "\n");
+    Print("  Order(g14) = ", Order(g14_sup42I), "\n");
+    Print("  Order(f14) = ", Order(f14_sup42I), "\n");
+    Print("  Order(t14) = ", Order(t14_sup42I), "\n");
+    Print("  f14^t14 = f14^-1 ? ",
+          f14_sup42I^t14_sup42I = f14_sup42I^-1, "\n");
+    Print("  Trace(g14), Trace(f14), Trace(f14^2), Trace(f14^3), Trace(t14) = ",
+          TraceLabel42I(TraceMat42I(g14_sup42I)), ", ",
+          TraceLabel42I(TraceMat42I(f14_sup42I)), ", ",
+          TraceLabel42I(TraceMat42I(f14_sup42I^2)), ", ",
+          TraceLabel42I(TraceMat42I(f14_sup42I^3)), ", ",
+          TraceLabel42I(TraceMat42I(t14_sup42I)), "\n");
+
+    ############################################################
+    # PART 8. G2 fingerprint
+    ############################################################
+
+    PrintTraceLineG242I := function(name, x12, x14)
+        local tr12, tr14, tr26, tr38, tr52;
+
+        tr12 := TraceMat42I(x12);
+        tr14 := TraceMat42I(x14);
+        tr26 := tr12 + tr14;
+
+        tr38 := 2 * tr12 + tr14;
+        tr52 := tr14 + tr38;
+
+        Print("  ", name, "\n");
+        Print("      trace on 12              = ", TraceLabel42I(tr12), "\n");
+        Print("      trace on 14              = ", TraceLabel42I(tr14), "\n");
+        Print("      trace on 26 = 12+14      = ", TraceLabel26_42I(tr26), "\n");
+        Print("      G2 test: L(G2) 14-part   = ", TraceLabel42I(tr14), "\n");
+        Print("      G2 test: V38=12+12+14    = ", TraceLabel42I(tr38), "\n");
+        Print("      total 52 = 14+38         = ", TraceLabel52_42I(tr52), "\n");
+    end;;
+
+    Print("\n============================================================\n");
+    Print("PART 8: G2 FINGERPRINT COMPARISON\n");
+    Print("============================================================\n");
+
+    Print("Supervisor's possible line:\n");
+    Print("  p=7, G2 <= F4, and L2(13) <= G2.\n");
+    Print("  L(F4)|G2 may be 14 + 38.\n");
+    Print("  Possible V38|L2(13) may be 12 + 12 + 14.\n");
+    Print("  Then L(F4)|L2(13) would be 2*12 + 2*14.\n\n");
+
+    PrintTraceLineG242I("g", g12_sup42I, g14_sup42I);
+    PrintTraceLineG242I("f", f12_sup42I, f14_sup42I);
+    PrintTraceLineG242I("f^2", f12_sup42I^2, f14_sup42I^2);
+    PrintTraceLineG242I("f^3", f12_sup42I^3, f14_sup42I^3);
+    PrintTraceLineG242I("t", t12_sup42I, t14_sup42I);
+
+fi;
+
+############################################################
+# PART 9. Summary of all hits
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 9: SUMMARY OF ALL MODEL HITS\n");
+Print("============================================================\n");
+
+for rec42I in SyncResults42I do
+    Print("\n14-record #", rec42I.idx14, "\n");
+    Print("  good 13:6 pairs = ", rec42I.goodPairCount, "\n");
+    Print("  total Walton hits = ", Length(rec42I.hits), "\n");
+
+    for i42I in [1..Length(rec42I.hits)] do
+        Print("    hit #", i42I,
+              ": targetTrace=", rec42I.hits[i42I].targetTrace,
+              ", witness g^", rec42I.hits[i42I].witness.i,
+              " f^", rec42I.hits[i42I].witness.j,
+              ", Trace(g,f,f2,f3,t)=",
+              TraceLabel26_42I(TraceMat42I(rec42I.hits[i42I].g)), ",",
+              TraceLabel26_42I(TraceMat42I(rec42I.hits[i42I].f)), ",",
+              TraceLabel26_42I(TraceMat42I(rec42I.hits[i42I].f^2)), ",",
+              TraceLabel26_42I(TraceMat42I(rec42I.hits[i42I].f^3)), ",",
+              TraceLabel26_42I(TraceMat42I(rec42I.hits[i42I].t)), "\n");
+    od;
+od;
+
+############################################################
+# PART 10. Final saved variables
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 10: FINAL SAVED VARIABLES\n");
+Print("============================================================\n");
+
+Print("Saved variables in this fresh session:\n");
+Print("  Habs42I\n");
+Print("  mods42I, sourceGens42I, moduleRecords42I\n");
+Print("  SyncResults42I, TargetHits42I, chosen42I\n");
+
+if chosen42I <> fail then
+    Print("  H12_sup42I, g12_sup42I, f12_sup42I, t12_sup42I, B12_sup42I\n");
+    Print("  H14_sup42I, g14_sup42I, f14_sup42I, t14_sup42I, B14_sup42I\n");
+    Print("  H26_sup42I, g26_sup42I, f26_sup42I, t26_sup42I, B26_sup42I\n");
+fi;
+
+Print("\n============================================================\n");
+Print("STEP 42I FINISHED\n");
+Print("============================================================\n");
+
+LogTo();
+
+
+
+
+############################################################
+############################################################
+# BEGIN STEP 42J FRESH RESTART: CLEAN TARGET CANDIDATE FOR 12 + 14-RECORD #4
+############################################################
+############################################################
+
+
+############################################################
+# STEP 42J FRESH RESTART:
+# CLEAN TARGET CANDIDATE FOR 12 + 14-RECORD #4
+#
+# Paste after:
+#   using Oscar
+#   GAP.prompt()
+#
+# This script uses the result from Step 42I:
+#
+#   correct model = 12-record #2 plus 14-record #4
+#
+# Aim:
+#   Rebuild everything fresh.
+#   Search only the successful 26D model.
+#   Find a target-trace Walton triple:
+#
+#       |g| = 13
+#       |f| = 6
+#       |t| = 2
+#       |<g,f>| = 78
+#       |<g,f,t>| = 1092
+#       f acts on <g> by exponent 10
+#       f^t = f^-1
+#       t not in <g,f>
+#       t does not normalise <g>
+#       exists b in <g,f> with Order(b*t)=3
+#
+# Target 26D traces:
+#
+#       Trace(g)   = 0
+#       Trace(f)   = 1
+#       Trace(f^2) = -1
+#       Trace(f^3) = -2
+#       Trace(t)   = -2
+#
+# Doubling:
+#
+#       0, 2, -2, -4, -4
+############################################################
+
+LogTo("STEP42J_CLEAN_TARGET_26D_RECORD4_LOG.txt");
+
+Print("\n============================================================\n");
+Print("STEP 42J FRESH RESTART: CLEAN TARGET 26D RECORD #4\n");
+Print("============================================================\n");
+
+############################################################
+# PART 0. Basic setup
+############################################################
+
+F7_42J := GF(7);;
+one7_42J := One(F7_42J);;
+zero7_42J := 0 * one7_42J;;
+
+Habs42J := PSL(2,13);;
+
+Print("Size(PSL(2,13)) = ", Size(Habs42J), "\n");
+
+############################################################
+# PART 1. Load modules
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 1: LOAD MODULES\n");
+Print("============================================================\n");
+
+mods42J := IrreducibleModules(Habs42J, F7_42J);;
+
+sourceGens42J := mods42J[1];;
+moduleRecords42J := mods42J[2];;
+
+Print("Length(mods42J) = ", Length(mods42J), "\n");
+Print("Length(sourceGens42J) = ", Length(sourceGens42J), "\n");
+Print("Length(moduleRecords42J) = ", Length(moduleRecords42J), "\n");
+
+for i42J in [1..Length(moduleRecords42J)] do
+    Print("  module record #", i42J,
+          " dimension = ", moduleRecords42J[i42J].dimension,
+          ", generators length = ",
+          Length(moduleRecords42J[i42J].generators), "\n");
+od;
+
+idx12_42J := 2;;
+idx14_42J := 4;;
+
+Print("\nUsing 12-record #", idx12_42J, "\n");
+Print("Using 14-record #", idx14_42J, "\n");
+
+############################################################
+# PART 2. Helper functions
+############################################################
+
+TraceMat42J := function(A)
+    local s, i;
+
+    s := zero7_42J;
+
+    for i in [1..Length(A)] do
+        s := s + A[i][i];
+    od;
+
+    return s;
+end;;
+
+TraceLabel42J := function(x)
+    if x = 0 * one7_42J then
+        return "0";
+    elif x = 1 * one7_42J then
+        return "1";
+    elif x = -1 * one7_42J then
+        return "-1";
+    elif x = 2 * one7_42J then
+        return "2";
+    elif x = -2 * one7_42J then
+        return "-2";
+    elif x = -4 * one7_42J then
+        return "-4";
+    else
+        return String(x);
+    fi;
+end;;
+
+TraceLabel52_42J := function(x)
+    if x = 0 * one7_42J then
+        return "0";
+    elif x = 2 * one7_42J then
+        return "2";
+    elif x = -2 * one7_42J then
+        return "-2";
+    elif x = -4 * one7_42J then
+        return "-4";
+    else
+        return String(x);
+    fi;
+end;;
+
+ActionExponentCyclic42J := function(g, x)
+    local gx, k, n;
+
+    n := Order(g);
+    gx := g^x;
+
+    for k in [0..n-1] do
+        if gx = g^k then
+            return k;
+        fi;
+    od;
+
+    return fail;
+end;;
+
+FindBruhatWitness42J := function(g, f, t)
+    local i, j, b, bt, id;
+
+    id := t^0;
+
+    for i in [0..12] do
+        for j in [0..5] do
+            b := g^i * f^j;
+            bt := b * t;
+
+            if bt <> id and bt^3 = id then
+                return rec(i := i, j := j, order := Order(bt));
+            fi;
+        od;
+    od;
+
+    return fail;
+end;;
+
+NormalFormsCount42J := function(g, f)
+    local L, i, j;
+
+    L := [];
+
+    for i in [0..12] do
+        for j in [0..5] do
+            Add(L, g^i * f^j);
+        od;
+    od;
+
+    return Length(Set(L));
+end;;
+
+BlockDiag2_42J := function(A, B)
+    local n, m, C, i, j;
+
+    n := Length(A);
+    m := Length(B);
+
+    C := NullMat(n + m, n + m, F7_42J);
+
+    for i in [1..n] do
+        for j in [1..n] do
+            C[i][j] := A[i][j];
+        od;
+    od;
+
+    for i in [1..m] do
+        for j in [1..m] do
+            C[n+i][n+j] := B[i][j];
+        od;
+    od;
+
+    return C;
+end;;
+
+TopLeftBlock42J := function(A, d)
+    local C, i, j;
+
+    C := NullMat(d, d, F7_42J);
+
+    for i in [1..d] do
+        for j in [1..d] do
+            C[i][j] := A[i][j];
+        od;
+    od;
+
+    return C;
+end;;
+
+BottomRightBlock42J := function(A, d)
+    local n, m, C, i, j;
+
+    n := Length(A);
+    m := n - d;
+
+    C := NullMat(m, m, F7_42J);
+
+    for i in [1..m] do
+        for j in [1..m] do
+            C[i][j] := A[d+i][d+j];
+        od;
+    od;
+
+    return C;
+end;;
+
+IsTarget26Trace42J := function(g, f, t)
+    if TraceMat42J(g) <> 0 * one7_42J then
+        return false;
+    fi;
+
+    if TraceMat42J(f) <> 1 * one7_42J then
+        return false;
+    fi;
+
+    if TraceMat42J(f^2) <> -1 * one7_42J then
+        return false;
+    fi;
+
+    if TraceMat42J(f^3) <> -2 * one7_42J then
+        return false;
+    fi;
+
+    if TraceMat42J(t) <> -2 * one7_42J then
+        return false;
+    fi;
+
+    return true;
+end;;
+
+PrintTraceProfile26_42J := function(g, f, t)
+    Print("  Trace(g)   = ", TraceLabel42J(TraceMat42J(g)), "\n");
+    Print("  Trace(f)   = ", TraceLabel42J(TraceMat42J(f)), "\n");
+    Print("  Trace(f^2) = ", TraceLabel42J(TraceMat42J(f^2)), "\n");
+    Print("  Trace(f^3) = ", TraceLabel42J(TraceMat42J(f^3)), "\n");
+    Print("  Trace(t)   = ", TraceLabel42J(TraceMat42J(t)), "\n");
+end;;
+
+PrintDoubledProfile52_42J := function(g, f, t)
+    Print("  2*Trace(g)   = ", TraceLabel52_42J(2 * TraceMat42J(g)), "\n");
+    Print("  2*Trace(f)   = ", TraceLabel52_42J(2 * TraceMat42J(f)), "\n");
+    Print("  2*Trace(f^2) = ", TraceLabel52_42J(2 * TraceMat42J(f^2)), "\n");
+    Print("  2*Trace(f^3) = ", TraceLabel52_42J(2 * TraceMat42J(f^3)), "\n");
+    Print("  2*Trace(t)   = ", TraceLabel52_42J(2 * TraceMat42J(t)), "\n");
+end;;
+
+############################################################
+# PART 3. Build the synchronised 26D model
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 3: BUILD 12 + 14-RECORD #4 MODEL\n");
+Print("============================================================\n");
+
+gens12_42J := moduleRecords42J[idx12_42J].generators;;
+gens14_42J := moduleRecords42J[idx14_42J].generators;;
+
+gens26_42J := [];;
+
+for k42J in [1..Length(gens12_42J)] do
+    Add(gens26_42J, BlockDiag2_42J(gens12_42J[k42J], gens14_42J[k42J]));
+od;
+
+H12_42J := Group(gens12_42J);;
+H14_42J := Group(gens14_42J);;
+H26_42J := Group(gens26_42J);;
+
+Print("Size(H12_42J) = ", Size(H12_42J), "\n");
+Print("Size(H14_42J) = ", Size(H14_42J), "\n");
+Print("Size(H26_42J) = ", Size(H26_42J), "\n");
+
+############################################################
+# PART 4. Search for clean target-trace Walton triple
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 4: SEARCH TARGET-TRACE WALTON TRIPLES\n");
+Print("============================================================\n");
+
+elts42J := Elements(H26_42J);;
+order13s42J := Filtered(elts42J, x -> Order(x) = 13);;
+order6s42J := Filtered(elts42J, x -> Order(x) = 6);;
+invols42J := Filtered(elts42J, x -> Order(x) = 2);;
+
+Print("total elements = ", Length(elts42J), "\n");
+Print("order-13 elements = ", Length(order13s42J), "\n");
+Print("order-6 elements = ", Length(order6s42J), "\n");
+Print("involutions = ", Length(invols42J), "\n");
+
+TargetHits42J := [];;
+AllHits42J := [];;
+
+MAX_TARGET_HITS_42J := 30;;
+
+gCount42J := 0;;
+goodPairCount42J := 0;;
+
+for g42J in order13s42J do
+
+    gCount42J := gCount42J + 1;
+
+    if gCount42J mod 20 = 0 then
+        Print("progress: g-count = ", gCount42J,
+              " / ", Length(order13s42J),
+              ", good 13:6 pairs = ", goodPairCount42J,
+              ", target hits = ", Length(TargetHits42J),
+              ", Runtime ms = ", Runtime(), "\n");
+    fi;
+
+    if Length(TargetHits42J) < MAX_TARGET_HITS_42J then
+
+        for fRaw42J in order6s42J do
+
+            if Length(TargetHits42J) < MAX_TARGET_HITS_42J then
+
+                action42J := ActionExponentCyclic42J(g42J, fRaw42J);;
+
+                if action42J = 10 or action42J = 4 then
+
+                    if action42J = 10 then
+                        f42J := fRaw42J;;
+                    else
+                        f42J := fRaw42J^-1;;
+                    fi;
+
+                    if ActionExponentCyclic42J(g42J, f42J) = 10 then
+
+                        B42J := Group(g42J, f42J);;
+
+                        if Size(B42J) = 78 then
+
+                            nf42J := NormalFormsCount42J(g42J, f42J);;
+
+                            if nf42J = 78 then
+
+                                goodPairCount42J := goodPairCount42J + 1;
+
+                                for t42J in invols42J do
+
+                                    if Length(TargetHits42J) < MAX_TARGET_HITS_42J then
+
+                                        if f42J^t42J = f42J^-1
+                                           and not (t42J in B42J)
+                                           and ActionExponentCyclic42J(g42J, t42J) = fail then
+
+                                            wit42J := FindBruhatWitness42J(g42J, f42J, t42J);;
+
+                                            if wit42J <> fail then
+
+                                                genSize42J := Size(Group(g42J, f42J, t42J));;
+
+                                                if genSize42J = 1092 then
+
+                                                    hit42J := rec(
+                                                        g := g42J,
+                                                        f := f42J,
+                                                        t := t42J,
+                                                        B := B42J,
+                                                        witness := wit42J,
+                                                        normalForms := nf42J,
+                                                        targetTrace := IsTarget26Trace42J(g42J, f42J, t42J),
+                                                        ordergt := Order(g42J * t42J)
+                                                    );;
+
+                                                    Add(AllHits42J, hit42J);
+
+                                                    if hit42J.targetTrace = true then
+                                                        Add(TargetHits42J, hit42J);
+
+                                                        Print("\nTARGET HIT #", Length(TargetHits42J), "\n");
+                                                        Print("  witness b = g^", wit42J.i,
+                                                              " * f^", wit42J.j, "\n");
+                                                        Print("  Order(b*t) = ",
+                                                              Order((g42J^wit42J.i * f42J^wit42J.j) * t42J), "\n");
+                                                        Print("  Order(g*t) = ", Order(g42J * t42J), "\n");
+                                                        Print("  Size(B) = ", Size(B42J), "\n");
+                                                        Print("  normal forms in B = ", nf42J, "\n");
+                                                        Print("  Size(<g,f,t>) = ", genSize42J, "\n");
+                                                        Print("  Trace profile:\n");
+                                                        PrintTraceProfile26_42J(g42J, f42J, t42J);
+                                                    fi;
+                                                fi;
+                                            fi;
+                                        fi;
+                                    fi;
+                                od;
+                            fi;
+                        fi;
+                    fi;
+                fi;
+            fi;
+        od;
+    fi;
+od;
+
+Print("\nSearch finished.\n");
+Print("good 13:6 pairs found = ", goodPairCount42J, "\n");
+Print("all Walton hits found before cap = ", Length(AllHits42J), "\n");
+Print("target-trace hits found = ", Length(TargetHits42J), "\n");
+
+############################################################
+# PART 5. Choose preferred target hit
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 5: CHOOSE PREFERRED TARGET HIT\n");
+Print("============================================================\n");
+
+chosen42J := fail;;
+
+# Prefer the neat Bruhat witness b = g^1 f^0 if present.
+for hit42J in TargetHits42J do
+    if chosen42J = fail
+       and hit42J.witness.i = 1
+       and hit42J.witness.j = 0 then
+        chosen42J := hit42J;;
+    fi;
+od;
+
+# Otherwise use the first target hit.
+if chosen42J = fail and Length(TargetHits42J) > 0 then
+    chosen42J := TargetHits42J[1];;
+fi;
+
+if chosen42J = fail then
+
+    Print("No target hit found. Do not use later variables.\n");
+
+else
+
+    g26_42J := chosen42J.g;;
+    f26_42J := chosen42J.f;;
+    t26_42J := chosen42J.t;;
+    B26_42J := chosen42J.B;;
+
+    g12_42J := TopLeftBlock42J(g26_42J, 12);;
+    f12_42J := TopLeftBlock42J(f26_42J, 12);;
+    t12_42J := TopLeftBlock42J(t26_42J, 12);;
+
+    g14_42J := BottomRightBlock42J(g26_42J, 12);;
+    f14_42J := BottomRightBlock42J(f26_42J, 12);;
+    t14_42J := BottomRightBlock42J(t26_42J, 12);;
+
+    B12_42J := Group(g12_42J, f12_42J);;
+    B14_42J := Group(g14_42J, f14_42J);;
+
+    Print("Chosen target hit:\n");
+    Print("  witness b = g^", chosen42J.witness.i,
+          " * f^", chosen42J.witness.j, "\n");
+    Print("  Order(g*t) = ", chosen42J.ordergt, "\n");
+
+    ############################################################
+    # PART 6. Final Walton checks
+    ############################################################
+
+    Print("\n============================================================\n");
+    Print("PART 6: FINAL WALTON CHECKS\n");
+    Print("============================================================\n");
+
+    Print("Final 26D group checks:\n");
+    Print("  Size(H26_42J) = ", Size(H26_42J), "\n");
+    Print("  Size(B26_42J) = ", Size(B26_42J), "\n");
+    Print("  Order(g26_42J) = ", Order(g26_42J), "\n");
+    Print("  Order(f26_42J) = ", Order(f26_42J), "\n");
+    Print("  Order(t26_42J) = ", Order(t26_42J), "\n");
+    Print("  Size(<g,f,t>) = ", Size(Group(g26_42J, f26_42J, t26_42J)), "\n");
+    Print("  Normal forms in B = ", NormalFormsCount42J(g26_42J, f26_42J), "\n");
+
+    Print("\nWalton relation checks:\n");
+    Print("  action exponent of f on <g> = ",
+          ActionExponentCyclic42J(g26_42J, f26_42J), "\n");
+    Print("  f^t = f^-1 ? ", f26_42J^t26_42J = f26_42J^-1, "\n");
+    Print("  t in B ? ", t26_42J in B26_42J, "\n");
+    Print("  t normalises <g> ? ",
+          ActionExponentCyclic42J(g26_42J, t26_42J) <> fail, "\n");
+
+    witFinal42J := FindBruhatWitness42J(g26_42J, f26_42J, t26_42J);;
+
+    if witFinal42J = fail then
+        Print("  Bruhat witness: none\n");
+    else
+        Print("  Bruhat witness: b = g^",
+              witFinal42J.i, " * f^", witFinal42J.j, "\n");
+        Print("  Order(b*t) = ",
+              Order((g26_42J^witFinal42J.i
+                    * f26_42J^witFinal42J.j)
+                    * t26_42J), "\n");
+    fi;
+
+    Print("\nClean 26D trace profile:\n");
+    PrintTraceProfile26_42J(g26_42J, f26_42J, t26_42J);
+
+    Print("\nClean doubled 52D comparison profile:\n");
+    PrintDoubledProfile52_42J(g26_42J, f26_42J, t26_42J);
+
+    ############################################################
+    # PART 7. 12D and 14D block checks
+    ############################################################
+
+    Print("\n============================================================\n");
+    Print("PART 7: 12D AND 14D BLOCK CHECKS\n");
+    Print("============================================================\n");
+
+    Print("\n12D block checks:\n");
+    Print("  Size(<g12,f12,t12>) = ", Size(Group(g12_42J, f12_42J, t12_42J)), "\n");
+    Print("  Size(B12) = ", Size(B12_42J), "\n");
+    Print("  Order(g12) = ", Order(g12_42J), "\n");
+    Print("  Order(f12) = ", Order(f12_42J), "\n");
+    Print("  Order(t12) = ", Order(t12_42J), "\n");
+    Print("  f12^t12 = f12^-1 ? ", f12_42J^t12_42J = f12_42J^-1, "\n");
+    Print("  Trace(g12), Trace(f12), Trace(f12^2), Trace(f12^3), Trace(t12) = ",
+          TraceLabel42J(TraceMat42J(g12_42J)), ", ",
+          TraceLabel42J(TraceMat42J(f12_42J)), ", ",
+          TraceLabel42J(TraceMat42J(f12_42J^2)), ", ",
+          TraceLabel42J(TraceMat42J(f12_42J^3)), ", ",
+          TraceLabel42J(TraceMat42J(t12_42J)), "\n");
+
+    Print("\n14D block checks:\n");
+    Print("  Size(<g14,f14,t14>) = ", Size(Group(g14_42J, f14_42J, t14_42J)), "\n");
+    Print("  Size(B14) = ", Size(B14_42J), "\n");
+    Print("  Order(g14) = ", Order(g14_42J), "\n");
+    Print("  Order(f14) = ", Order(f14_42J), "\n");
+    Print("  Order(t14) = ", Order(t14_42J), "\n");
+    Print("  f14^t14 = f14^-1 ? ", f14_42J^t14_42J = f14_42J^-1, "\n");
+    Print("  Trace(g14), Trace(f14), Trace(f14^2), Trace(f14^3), Trace(t14) = ",
+          TraceLabel42J(TraceMat42J(g14_42J)), ", ",
+          TraceLabel42J(TraceMat42J(f14_42J)), ", ",
+          TraceLabel42J(TraceMat42J(f14_42J^2)), ", ",
+          TraceLabel42J(TraceMat42J(f14_42J^3)), ", ",
+          TraceLabel42J(TraceMat42J(t14_42J)), "\n");
+
+    ############################################################
+    # PART 8. G2 fingerprint
+    ############################################################
+
+    Print("\n============================================================\n");
+    Print("PART 8: G2 FINGERPRINT COMPARISON\n");
+    Print("============================================================\n");
+
+    Print("Supervisor line:\n");
+    Print("  p=7, G2 <= F4, and L2(13) <= G2.\n");
+    Print("  L(F4)|G2 may be 14 + 38.\n");
+    Print("  Possible V38|L2(13) may be 12 + 12 + 14.\n");
+    Print("  Then L(F4)|L2(13) would be 2*12 + 2*14.\n\n");
+
+    Print("g:\n");
+    tr12g42J := TraceMat42J(g12_42J);;
+    tr14g42J := TraceMat42J(g14_42J);;
+    Print("  trace on 12 = ", TraceLabel42J(tr12g42J), "\n");
+    Print("  trace on 14 = ", TraceLabel42J(tr14g42J), "\n");
+    Print("  trace on 26 = ", TraceLabel42J(tr12g42J + tr14g42J), "\n");
+    Print("  V38=12+12+14 trace = ", TraceLabel42J(2*tr12g42J + tr14g42J), "\n");
+    Print("  total 52 trace = ", TraceLabel52_42J(2*tr12g42J + 2*tr14g42J), "\n");
+
+    Print("f:\n");
+    tr12f42J := TraceMat42J(f12_42J);;
+    tr14f42J := TraceMat42J(f14_42J);;
+    Print("  trace on 12 = ", TraceLabel42J(tr12f42J), "\n");
+    Print("  trace on 14 = ", TraceLabel42J(tr14f42J), "\n");
+    Print("  trace on 26 = ", TraceLabel42J(tr12f42J + tr14f42J), "\n");
+    Print("  V38=12+12+14 trace = ", TraceLabel42J(2*tr12f42J + tr14f42J), "\n");
+    Print("  total 52 trace = ", TraceLabel52_42J(2*tr12f42J + 2*tr14f42J), "\n");
+
+    Print("f^2:\n");
+    tr12f2_42J := TraceMat42J(f12_42J^2);;
+    tr14f2_42J := TraceMat42J(f14_42J^2);;
+    Print("  trace on 12 = ", TraceLabel42J(tr12f2_42J), "\n");
+    Print("  trace on 14 = ", TraceLabel42J(tr14f2_42J), "\n");
+    Print("  trace on 26 = ", TraceLabel42J(tr12f2_42J + tr14f2_42J), "\n");
+    Print("  V38=12+12+14 trace = ", TraceLabel42J(2*tr12f2_42J + tr14f2_42J), "\n");
+    Print("  total 52 trace = ", TraceLabel52_42J(2*tr12f2_42J + 2*tr14f2_42J), "\n");
+
+    Print("f^3:\n");
+    tr12f3_42J := TraceMat42J(f12_42J^3);;
+    tr14f3_42J := TraceMat42J(f14_42J^3);;
+    Print("  trace on 12 = ", TraceLabel42J(tr12f3_42J), "\n");
+    Print("  trace on 14 = ", TraceLabel42J(tr14f3_42J), "\n");
+    Print("  trace on 26 = ", TraceLabel42J(tr12f3_42J + tr14f3_42J), "\n");
+    Print("  V38=12+12+14 trace = ", TraceLabel42J(2*tr12f3_42J + tr14f3_42J), "\n");
+    Print("  total 52 trace = ", TraceLabel52_42J(2*tr12f3_42J + 2*tr14f3_42J), "\n");
+
+    Print("t:\n");
+    tr12t42J := TraceMat42J(t12_42J);;
+    tr14t42J := TraceMat42J(t14_42J);;
+    Print("  trace on 12 = ", TraceLabel42J(tr12t42J), "\n");
+    Print("  trace on 14 = ", TraceLabel42J(tr14t42J), "\n");
+    Print("  trace on 26 = ", TraceLabel42J(tr12t42J + tr14t42J), "\n");
+    Print("  V38=12+12+14 trace = ", TraceLabel42J(2*tr12t42J + tr14t42J), "\n");
+    Print("  total 52 trace = ", TraceLabel52_42J(2*tr12t42J + 2*tr14t42J), "\n");
+
+fi;
+
+############################################################
+# PART 9. Summary
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 9: SUMMARY\n");
+Print("============================================================\n");
+
+Print("Total target hits found = ", Length(TargetHits42J), "\n");
+
+for i42J in [1..Length(TargetHits42J)] do
+    Print("  target hit #", i42J,
+          ": witness g^", TargetHits42J[i42J].witness.i,
+          " f^", TargetHits42J[i42J].witness.j,
+          ", Order(g*t)=", TargetHits42J[i42J].ordergt,
+          ", traces=",
+          TraceLabel42J(TraceMat42J(TargetHits42J[i42J].g)), ",",
+          TraceLabel42J(TraceMat42J(TargetHits42J[i42J].f)), ",",
+          TraceLabel42J(TraceMat42J(TargetHits42J[i42J].f^2)), ",",
+          TraceLabel42J(TraceMat42J(TargetHits42J[i42J].f^3)), ",",
+          TraceLabel42J(TraceMat42J(TargetHits42J[i42J].t)), "\n");
+od;
+
+Print("\nSaved variables if target hit exists:\n");
+Print("  H12_42J, H14_42J, H26_42J\n");
+Print("  g12_42J, f12_42J, t12_42J, B12_42J\n");
+Print("  g14_42J, f14_42J, t14_42J, B14_42J\n");
+Print("  g26_42J, f26_42J, t26_42J, B26_42J\n");
+Print("  TargetHits42J, chosen42J\n");
+
+Print("\n============================================================\n");
+Print("STEP 42J FINISHED\n");
+Print("============================================================\n");
+
+LogTo();
+
+
+
+
+############################################################
+############################################################
+# BEGIN STEP 43A FRESH RESTART: CLEAN SUPERVISOR EVIDENCE PACKAGE
+############################################################
+############################################################
+
+
+############################################################
+# STEP 43A FRESH RESTART:
+# CLEAN SUPERVISOR EVIDENCE PACKAGE
+#
+# Paste after:
+#   using Oscar
+#   GAP.prompt()
+#
+# Purpose:
+#   We now know the correct 26D model is:
+#
+#       V26 = 12-record #2 + 14-record #4
+#
+#   This script rebuilds everything fresh and produces a clean
+#   evidence package for the supervisor route:
+#
+#       H = PSL(2,13)
+#       V26|H = 12 + 14
+#       find g,f,t with Walton relations
+#       compare with G2/F4 fingerprint:
+#
+#           L(F4)|G2 = 14 + 38
+#           38|H = 12 + 12 + 14
+#           total 52|H = 2*12 + 2*14
+#
+# Expected V26 traces:
+#       g     0
+#       f     1
+#       f^2  -1
+#       f^3  -2
+#       t    -2
+#
+# Expected doubled 52D traces:
+#       g     0
+#       f     2
+#       f^2  -2
+#       f^3  -4
+#       t    -4
+############################################################
+
+LogTo("STEP43A_CLEAN_SUPERVISOR_EVIDENCE_PACKAGE_LOG.txt");
+
+Print("\n============================================================\n");
+Print("STEP 43A: CLEAN SUPERVISOR EVIDENCE PACKAGE\n");
+Print("============================================================\n");
+
+############################################################
+# PART 0. Basic setup
+############################################################
+
+F7_43A := GF(7);;
+one7_43A := One(F7_43A);;
+zero7_43A := 0 * one7_43A;;
+
+Habs43A := PSL(2,13);;
+
+Print("Size(PSL(2,13)) = ", Size(Habs43A), "\n");
+
+############################################################
+# PART 1. Load modules
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 1: LOAD IRREDUCIBLE MODULES OVER GF(7)\n");
+Print("============================================================\n");
+
+mods43A := IrreducibleModules(Habs43A, F7_43A);;
+
+sourceGens43A := mods43A[1];;
+moduleRecords43A := mods43A[2];;
+
+Print("Length(mods43A) = ", Length(mods43A), "\n");
+Print("Length(sourceGens43A) = ", Length(sourceGens43A), "\n");
+Print("Length(moduleRecords43A) = ", Length(moduleRecords43A), "\n");
+
+for i43A in [1..Length(moduleRecords43A)] do
+    Print("  module record #", i43A,
+          " dimension = ", moduleRecords43A[i43A].dimension,
+          ", generators length = ",
+          Length(moduleRecords43A[i43A].generators), "\n");
+od;
+
+idx12_43A := 2;;
+idx14_43A := 4;;
+
+Print("\nChosen model:\n");
+Print("  12-dimensional record #", idx12_43A, "\n");
+Print("  14-dimensional record #", idx14_43A, "\n");
+
+############################################################
+# PART 2. Helper functions
+############################################################
+
+TraceMat43A := function(A)
+    local s, i;
+    s := zero7_43A;
+    for i in [1..Length(A)] do
+        s := s + A[i][i];
+    od;
+    return s;
+end;;
+
+TraceLabel43A := function(x)
+    if x = 0 * one7_43A then
+        return "0";
+    elif x = 1 * one7_43A then
+        return "1";
+    elif x = -1 * one7_43A then
+        return "-1";
+    elif x = 2 * one7_43A then
+        return "2";
+    elif x = -2 * one7_43A then
+        return "-2";
+    elif x = -4 * one7_43A then
+        return "-4";
+    else
+        return String(x);
+    fi;
+end;;
+
+ActionExponentCyclic43A := function(g, x)
+    local gx, k, n;
+    n := Order(g);
+    gx := g^x;
+    for k in [0..n-1] do
+        if gx = g^k then
+            return k;
+        fi;
+    od;
+    return fail;
+end;;
+
+FindBruhatWitness43A := function(g, f, t)
+    local i, j, b, bt, id;
+    id := t^0;
+    for i in [0..12] do
+        for j in [0..5] do
+            b := g^i * f^j;
+            bt := b * t;
+            if bt <> id and bt^3 = id then
+                return rec(i := i, j := j, order := Order(bt));
+            fi;
+        od;
+    od;
+    return fail;
+end;;
+
+NormalFormsCount43A := function(g, f)
+    local L, i, j;
+    L := [];
+    for i in [0..12] do
+        for j in [0..5] do
+            Add(L, g^i * f^j);
+        od;
+    od;
+    return Length(Set(L));
+end;;
+
+BlockDiag2_43A := function(A, B)
+    local n, m, C, i, j;
+    n := Length(A);
+    m := Length(B);
+    C := NullMat(n + m, n + m, F7_43A);
+
+    for i in [1..n] do
+        for j in [1..n] do
+            C[i][j] := A[i][j];
+        od;
+    od;
+
+    for i in [1..m] do
+        for j in [1..m] do
+            C[n+i][n+j] := B[i][j];
+        od;
+    od;
+
+    return C;
+end;;
+
+BlockDiagList43A := function(L)
+    local total, M, C, offset, n, i, j;
+    total := Sum(List(L, X -> Length(X)));
+    C := NullMat(total, total, F7_43A);
+    offset := 0;
+
+    for M in L do
+        n := Length(M);
+        for i in [1..n] do
+            for j in [1..n] do
+                C[offset+i][offset+j] := M[i][j];
+            od;
+        od;
+        offset := offset + n;
+    od;
+
+    return C;
+end;;
+
+TopLeftBlock43A := function(A, d)
+    local C, i, j;
+    C := NullMat(d, d, F7_43A);
+    for i in [1..d] do
+        for j in [1..d] do
+            C[i][j] := A[i][j];
+        od;
+    od;
+    return C;
+end;;
+
+BottomRightBlock43A := function(A, d)
+    local n, m, C, i, j;
+    n := Length(A);
+    m := n - d;
+    C := NullMat(m, m, F7_43A);
+    for i in [1..m] do
+        for j in [1..m] do
+            C[i][j] := A[d+i][d+j];
+        od;
+    od;
+    return C;
+end;;
+
+FixedDim43A := function(A)
+    local N;
+    N := NullspaceMat(A - A^0);
+    return Length(N);
+end;;
+
+IsTarget26Trace43A := function(g, f, t)
+    if TraceMat43A(g) <> 0 * one7_43A then
+        return false;
+    fi;
+    if TraceMat43A(f) <> 1 * one7_43A then
+        return false;
+    fi;
+    if TraceMat43A(f^2) <> -1 * one7_43A then
+        return false;
+    fi;
+    if TraceMat43A(f^3) <> -2 * one7_43A then
+        return false;
+    fi;
+    if TraceMat43A(t) <> -2 * one7_43A then
+        return false;
+    fi;
+    return true;
+end;;
+
+PrintTraceLine43A := function(name, x12, x14, x26, x38, x52)
+    Print("  ", name, "\n");
+    Print("      trace on 12              = ", TraceLabel43A(TraceMat43A(x12)), "\n");
+    Print("      trace on 14              = ", TraceLabel43A(TraceMat43A(x14)), "\n");
+    Print("      trace on 26 = 12+14      = ", TraceLabel43A(TraceMat43A(x26)), "\n");
+    Print("      trace on 38 = 12+12+14   = ", TraceLabel43A(TraceMat43A(x38)), "\n");
+    Print("      trace on 52 = 14+38      = ", TraceLabel43A(TraceMat43A(x52)), "\n");
+end;;
+
+PrintFixedLine43A := function(name, x12, x14, x26, x38, x52)
+    Print("  ", name, "\n");
+    Print("      fixed dim on 12 = ", FixedDim43A(x12), "\n");
+    Print("      fixed dim on 14 = ", FixedDim43A(x14), "\n");
+    Print("      fixed dim on 26 = ", FixedDim43A(x26), "\n");
+    Print("      fixed dim on 38 = ", FixedDim43A(x38), "\n");
+    Print("      fixed dim on 52 = ", FixedDim43A(x52), "\n");
+end;;
+
+############################################################
+# PART 3. Build V26 = 12 + 14-record #4
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 3: BUILD V26 = 12 + 14-RECORD #4\n");
+Print("============================================================\n");
+
+gens12_43A := moduleRecords43A[idx12_43A].generators;;
+gens14_43A := moduleRecords43A[idx14_43A].generators;;
+
+gens26_43A := [];;
+
+for k43A in [1..Length(gens12_43A)] do
+    Add(gens26_43A, BlockDiag2_43A(gens12_43A[k43A], gens14_43A[k43A]));
+od;
+
+H12_43A := Group(gens12_43A);;
+H14_43A := Group(gens14_43A);;
+H26_43A := Group(gens26_43A);;
+
+Print("Size(H12_43A) = ", Size(H12_43A), "\n");
+Print("Size(H14_43A) = ", Size(H14_43A), "\n");
+Print("Size(H26_43A) = ", Size(H26_43A), "\n");
+
+############################################################
+# PART 4. Find one clean target Walton triple
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 4: FIND CLEAN TARGET WALTON TRIPLE\n");
+Print("============================================================\n");
+
+elts43A := Elements(H26_43A);;
+order13s43A := Filtered(elts43A, x -> Order(x) = 13);;
+order6s43A := Filtered(elts43A, x -> Order(x) = 6);;
+invols43A := Filtered(elts43A, x -> Order(x) = 2);;
+
+Print("total elements = ", Length(elts43A), "\n");
+Print("order-13 elements = ", Length(order13s43A), "\n");
+Print("order-6 elements = ", Length(order6s43A), "\n");
+Print("involutions = ", Length(invols43A), "\n");
+
+chosen43A := fail;;
+firstTarget43A := fail;;
+targetCount43A := 0;;
+allWaltonCount43A := 0;;
+goodPairCount43A := 0;;
+gCount43A := 0;;
+
+for g43A in order13s43A do
+
+    gCount43A := gCount43A + 1;
+
+    if gCount43A mod 20 = 0 then
+        Print("progress: g-count = ", gCount43A,
+              " / ", Length(order13s43A),
+              ", good 13:6 pairs = ", goodPairCount43A,
+              ", target hits = ", targetCount43A,
+              ", Runtime ms = ", Runtime(), "\n");
+    fi;
+
+    if chosen43A = fail then
+
+        for fRaw43A in order6s43A do
+
+            if chosen43A = fail then
+
+                action43A := ActionExponentCyclic43A(g43A, fRaw43A);;
+
+                if action43A = 10 or action43A = 4 then
+
+                    if action43A = 10 then
+                        f43A := fRaw43A;;
+                    else
+                        f43A := fRaw43A^-1;;
+                    fi;
+
+                    if ActionExponentCyclic43A(g43A, f43A) = 10 then
+
+                        B43A := Group(g43A, f43A);;
+
+                        if Size(B43A) = 78 then
+
+                            nf43A := NormalFormsCount43A(g43A, f43A);;
+
+                            if nf43A = 78 then
+
+                                goodPairCount43A := goodPairCount43A + 1;
+
+                                for t43A in invols43A do
+
+                                    if chosen43A = fail then
+
+                                        if f43A^t43A = f43A^-1
+                                           and not (t43A in B43A)
+                                           and ActionExponentCyclic43A(g43A, t43A) = fail then
+
+                                            wit43A := FindBruhatWitness43A(g43A, f43A, t43A);;
+
+                                            if wit43A <> fail then
+
+                                                genSize43A := Size(Group(g43A, f43A, t43A));;
+
+                                                if genSize43A = 1092 then
+
+                                                    allWaltonCount43A := allWaltonCount43A + 1;
+
+                                                    if IsTarget26Trace43A(g43A, f43A, t43A) = true then
+
+                                                        targetCount43A := targetCount43A + 1;
+
+                                                        hit43A := rec(
+                                                            g := g43A,
+                                                            f := f43A,
+                                                            t := t43A,
+                                                            B := B43A,
+                                                            witness := wit43A,
+                                                            normalForms := nf43A,
+                                                            ordergt := Order(g43A * t43A)
+                                                        );;
+
+                                                        if firstTarget43A = fail then
+                                                            firstTarget43A := hit43A;;
+                                                        fi;
+
+                                                        if wit43A.i = 1 and wit43A.j = 0 then
+                                                            chosen43A := hit43A;;
+                                                        fi;
+
+                                                        Print("\nTARGET HIT #", targetCount43A, "\n");
+                                                        Print("  witness b = g^", wit43A.i,
+                                                              " * f^", wit43A.j, "\n");
+                                                        Print("  Order(b*t) = ",
+                                                              Order((g43A^wit43A.i * f43A^wit43A.j) * t43A), "\n");
+                                                        Print("  Order(g*t) = ", Order(g43A * t43A), "\n");
+                                                        Print("  Size(B) = ", Size(B43A), "\n");
+                                                        Print("  normal forms in B = ", nf43A, "\n");
+                                                        Print("  Size(<g,f,t>) = ", genSize43A, "\n");
+                                                        Print("  traces on V26 = ",
+                                                              TraceLabel43A(TraceMat43A(g43A)), ", ",
+                                                              TraceLabel43A(TraceMat43A(f43A)), ", ",
+                                                              TraceLabel43A(TraceMat43A(f43A^2)), ", ",
+                                                              TraceLabel43A(TraceMat43A(f43A^3)), ", ",
+                                                              TraceLabel43A(TraceMat43A(t43A)), "\n");
+                                                    fi;
+                                                fi;
+                                            fi;
+                                        fi;
+                                    fi;
+                                od;
+                            fi;
+                        fi;
+                    fi;
+                fi;
+            fi;
+        od;
+    fi;
+od;
+
+if chosen43A = fail and firstTarget43A <> fail then
+    chosen43A := firstTarget43A;;
+fi;
+
+Print("\nSearch summary:\n");
+Print("  good 13:6 pairs seen = ", goodPairCount43A, "\n");
+Print("  Walton hits seen before chosen = ", allWaltonCount43A, "\n");
+Print("  target hits seen before chosen = ", targetCount43A, "\n");
+
+############################################################
+# PART 5. Final checks and G2/F4 package
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 5: FINAL CHECKS AND G2/F4 PACKAGE\n");
+Print("============================================================\n");
+
+if chosen43A = fail then
+
+    Print("No target hit found. Stop here.\n");
+
+else
+
+    g26_43A := chosen43A.g;;
+    f26_43A := chosen43A.f;;
+    t26_43A := chosen43A.t;;
+    B26_43A := chosen43A.B;;
+
+    g12_43A := TopLeftBlock43A(g26_43A, 12);;
+    f12_43A := TopLeftBlock43A(f26_43A, 12);;
+    t12_43A := TopLeftBlock43A(t26_43A, 12);;
+
+    g14_43A := BottomRightBlock43A(g26_43A, 12);;
+    f14_43A := BottomRightBlock43A(f26_43A, 12);;
+    t14_43A := BottomRightBlock43A(t26_43A, 12);;
+
+    B12_43A := Group(g12_43A, f12_43A);;
+    B14_43A := Group(g14_43A, f14_43A);;
+
+    ############################################################
+    # Build 38 and 52 fingerprint modules
+    #
+    # V38 = 12 + 12 + 14
+    # V52 = 14 + V38 = 14 + 12 + 12 + 14
+    ############################################################
+
+    g38_43A := BlockDiagList43A([g12_43A, g12_43A, g14_43A]);;
+    f38_43A := BlockDiagList43A([f12_43A, f12_43A, f14_43A]);;
+    t38_43A := BlockDiagList43A([t12_43A, t12_43A, t14_43A]);;
+
+    g52_43A := BlockDiagList43A([g14_43A, g12_43A, g12_43A, g14_43A]);;
+    f52_43A := BlockDiagList43A([f14_43A, f12_43A, f12_43A, f14_43A]);;
+    t52_43A := BlockDiagList43A([t14_43A, t12_43A, t12_43A, t14_43A]);;
+
+    H38_43A := Group(g38_43A, f38_43A, t38_43A);;
+    H52_43A := Group(g52_43A, f52_43A, t52_43A);;
+
+    Print("\nChosen target hit:\n");
+    Print("  witness b = g^", chosen43A.witness.i,
+          " * f^", chosen43A.witness.j, "\n");
+    Print("  Order(g*t) = ", chosen43A.ordergt, "\n");
+
+    Print("\nWalton checks on V26:\n");
+    Print("  Size(H26) = ", Size(Group(g26_43A, f26_43A, t26_43A)), "\n");
+    Print("  Size(B26) = ", Size(B26_43A), "\n");
+    Print("  Order(g) = ", Order(g26_43A), "\n");
+    Print("  Order(f) = ", Order(f26_43A), "\n");
+    Print("  Order(t) = ", Order(t26_43A), "\n");
+    Print("  normal forms in B = ", NormalFormsCount43A(g26_43A, f26_43A), "\n");
+    Print("  action exponent of f on <g> = ",
+          ActionExponentCyclic43A(g26_43A, f26_43A), "\n");
+    Print("  f^t = f^-1 ? ", f26_43A^t26_43A = f26_43A^-1, "\n");
+    Print("  t in B ? ", t26_43A in B26_43A, "\n");
+    Print("  t normalises <g> ? ",
+          ActionExponentCyclic43A(g26_43A, t26_43A) <> fail, "\n");
+
+    witFinal43A := FindBruhatWitness43A(g26_43A, f26_43A, t26_43A);;
+
+    if witFinal43A = fail then
+        Print("  Bruhat witness: none\n");
+    else
+        Print("  Bruhat witness: b = g^",
+              witFinal43A.i, " * f^", witFinal43A.j, "\n");
+        Print("  Order(b*t) = ",
+              Order((g26_43A^witFinal43A.i
+                    * f26_43A^witFinal43A.j)
+                    * t26_43A), "\n");
+    fi;
+
+    Print("\nSeparate block group checks:\n");
+    Print("  Size(<g12,f12,t12>) = ", Size(Group(g12_43A, f12_43A, t12_43A)), "\n");
+    Print("  Size(<g14,f14,t14>) = ", Size(Group(g14_43A, f14_43A, t14_43A)), "\n");
+    Print("  Size(H38 = 12+12+14) = ", Size(H38_43A), "\n");
+    Print("  Size(H52 = 14+38) = ", Size(H52_43A), "\n");
+
+    Print("\nTrace table:\n");
+    PrintTraceLine43A("g", g12_43A, g14_43A, g26_43A, g38_43A, g52_43A);
+    PrintTraceLine43A("f", f12_43A, f14_43A, f26_43A, f38_43A, f52_43A);
+    PrintTraceLine43A("f^2", f12_43A^2, f14_43A^2, f26_43A^2, f38_43A^2, f52_43A^2);
+    PrintTraceLine43A("f^3", f12_43A^3, f14_43A^3, f26_43A^3, f38_43A^3, f52_43A^3);
+    PrintTraceLine43A("t", t12_43A, t14_43A, t26_43A, t38_43A, t52_43A);
+
+    Print("\nFixed-space dimension table over GF(7):\n");
+    PrintFixedLine43A("g", g12_43A, g14_43A, g26_43A, g38_43A, g52_43A);
+    PrintFixedLine43A("f", f12_43A, f14_43A, f26_43A, f38_43A, f52_43A);
+    PrintFixedLine43A("f^2", f12_43A^2, f14_43A^2, f26_43A^2, f38_43A^2, f52_43A^2);
+    PrintFixedLine43A("f^3", f12_43A^3, f14_43A^3, f26_43A^3, f38_43A^3, f52_43A^3);
+    PrintFixedLine43A("t", t12_43A, t14_43A, t26_43A, t38_43A, t52_43A);
+
+    Print("\nSupervisor interpretation:\n");
+    Print("  V26|H = 12 + 14-record #4 gives the clean target profile.\n");
+    Print("  V38|H = 12 + 12 + 14 has the same trace as the complement to L(G2).\n");
+    Print("  V52|H = 14 + 38 = 2*12 + 2*14 gives traces 0,2,-2,-4,-4.\n");
+    Print("  This matches the old adjoint trace target for L(F4)|H.\n");
+
+fi;
+
+############################################################
+# PART 6. Saved variables
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 6: SAVED VARIABLES\n");
+Print("============================================================\n");
+
+Print("Saved variables if successful:\n");
+Print("  H12_43A, H14_43A, H26_43A, H38_43A, H52_43A\n");
+Print("  g12_43A, f12_43A, t12_43A, B12_43A\n");
+Print("  g14_43A, f14_43A, t14_43A, B14_43A\n");
+Print("  g26_43A, f26_43A, t26_43A, B26_43A\n");
+Print("  g38_43A, f38_43A, t38_43A\n");
+Print("  g52_43A, f52_43A, t52_43A\n");
+Print("  chosen43A\n");
+
+Print("\n============================================================\n");
+Print("STEP 43A FINISHED\n");
+Print("============================================================\n");
+
+LogTo();
+
+
+
+
+############################################################
+############################################################
+# BEGIN STEP 43B: PSL2(13) FINGERPRINT FROM SUCCESSFUL TRIPLE
+############################################################
+############################################################
+
+
+############################################################
+# STEP 43B:
+# CONTINUE FROM STEP 43A IN SAME SESSION
+#
+# Aim:
+#   Use the successful Step 43A variables:
+#
+#       g26_43A, f26_43A, t26_43A, B26_43A
+#       g12_43A, f12_43A, t12_43A
+#       g14_43A, f14_43A, t14_43A
+#       g38_43A, f38_43A, t38_43A
+#       g52_43A, f52_43A, t52_43A
+#
+#   Extract the PSL2(13)/Walton fingerprint:
+#
+#       P=<g>, Q=<g^t>
+#       action of f on P and Q
+#       B=<g,f>, B^t=<g^t,f>
+#       B cap B^t
+#       order distribution in B
+#       order distribution of b*t for b in B
+#       exact-inverting external t-candidates in H=<g,f,t>
+#       trace profiles by element order on 12,14,26,38,52
+#
+# This is not another blind search.
+# This is evidence extraction from the successful triple.
+############################################################
+
+LogTo("STEP43B_PSL2_FINGERPRINT_FROM_SUCCESSFUL_TRIPLE_LOG.txt");
+
+Print("\n============================================================\n");
+Print("STEP 43B: PSL2(13) FINGERPRINT FROM SUCCESSFUL TRIPLE\n");
+Print("============================================================\n");
+
+############################################################
+# PART 0. Guard
+############################################################
+
+if not IsBound(g26_43A) or not IsBound(f26_43A) or not IsBound(t26_43A) then
+
+    Print("Required Step 43A variables are missing.\n");
+    Print("Do not continue this step. You need the successful Step 43A session.\n");
+
+else
+
+    ############################################################
+    # PART 1. Local helper functions
+    ############################################################
+
+    F7_43B := GF(7);;
+    one7_43B := One(F7_43B);;
+    zero7_43B := 0 * one7_43B;;
+
+    TraceMat43B := function(A)
+        local s, i;
+        s := zero7_43B;
+        for i in [1..Length(A)] do
+            s := s + A[i][i];
+        od;
+        return s;
+    end;;
+
+    TraceLabel43B := function(x)
+        if x = 0 * one7_43B then
+            return "0";
+        elif x = 1 * one7_43B then
+            return "1";
+        elif x = -1 * one7_43B then
+            return "-1";
+        elif x = 2 * one7_43B then
+            return "2";
+        elif x = -2 * one7_43B then
+            return "-2";
+        elif x = -4 * one7_43B then
+            return "-4";
+        else
+            return String(x);
+        fi;
+    end;;
+
+    TopLeftBlock43B := function(A, d)
+        local C, i, j;
+        C := NullMat(d, d, F7_43B);
+        for i in [1..d] do
+            for j in [1..d] do
+                C[i][j] := A[i][j];
+            od;
+        od;
+        return C;
+    end;;
+
+    BottomRightBlock43B := function(A, d)
+        local n, m, C, i, j;
+        n := Length(A);
+        m := n - d;
+        C := NullMat(m, m, F7_43B);
+        for i in [1..m] do
+            for j in [1..m] do
+                C[i][j] := A[d+i][d+j];
+            od;
+        od;
+        return C;
+    end;;
+
+    BlockDiagList43B := function(L)
+        local total, M, C, offset, n, i, j;
+        total := Sum(List(L, X -> Length(X)));
+        C := NullMat(total, total, F7_43B);
+        offset := 0;
+
+        for M in L do
+            n := Length(M);
+            for i in [1..n] do
+                for j in [1..n] do
+                    C[offset+i][offset+j] := M[i][j];
+                od;
+            od;
+            offset := offset + n;
+        od;
+
+        return C;
+    end;;
+
+    FixedDim43B := function(A)
+        local N;
+        N := NullspaceMat(A - A^0);
+        return Length(N);
+    end;;
+
+    ActionExponentCyclic43B := function(g, x)
+        local gx, k, n;
+        n := Order(g);
+        gx := g^x;
+        for k in [0..n-1] do
+            if gx = g^k then
+                return k;
+            fi;
+        od;
+        return fail;
+    end;;
+
+    NormalForms43B := function(g, f)
+        local L, i, j;
+        L := [];
+        for i in [0..12] do
+            for j in [0..5] do
+                Add(L, rec(i := i, j := j, elt := g^i * f^j));
+            od;
+        od;
+        return L;
+    end;;
+
+    PrintOrderDistribution43B := function(name, L)
+        local orders, o, count;
+        orders := Set(List(L, x -> Order(x)));
+        Print(name, "\n");
+        for o in orders do
+            count := Length(Filtered(L, x -> Order(x) = o));
+            Print("  order ", o, ": ", count, "\n");
+        od;
+    end;;
+
+    FindBruhatWitness43B := function(g, f, t)
+        local i, j, b, bt, id;
+        id := t^0;
+        for i in [0..12] do
+            for j in [0..5] do
+                b := g^i * f^j;
+                bt := b * t;
+                if bt <> id and bt^3 = id then
+                    return rec(i := i, j := j, order := Order(bt));
+                fi;
+            od;
+        od;
+        return fail;
+    end;;
+
+    ProfileString43B := function(x)
+        local x12, x14, x26, x38, x52, s;
+
+        x26 := x;
+        x12 := TopLeftBlock43B(x26, 12);
+        x14 := BottomRightBlock43B(x26, 12);
+
+        x38 := BlockDiagList43B([x12, x12, x14]);
+        x52 := BlockDiagList43B([x14, x12, x12, x14]);
+
+        s := Concatenation(
+            "tr12=", TraceLabel43B(TraceMat43B(x12)),
+            ", tr14=", TraceLabel43B(TraceMat43B(x14)),
+            ", tr26=", TraceLabel43B(TraceMat43B(x26)),
+            ", tr38=", TraceLabel43B(TraceMat43B(x38)),
+            ", tr52=", TraceLabel43B(TraceMat43B(x52))
+        );
+
+        return s;
+    end;;
+
+    PrintProfileByOrder43B := function(H)
+        local elts, orders, o, subset, profiles, x, p;
+
+        elts := Elements(H);
+        orders := Set(List(elts, x -> Order(x)));
+
+        Print("\nTrace profiles by element order on 12,14,26,38,52:\n");
+
+        for o in orders do
+            subset := Filtered(elts, x -> Order(x) = o);
+            profiles := [];
+
+            for x in subset do
+                p := ProfileString43B(x);
+                if not (p in profiles) then
+                    Add(profiles, p);
+                fi;
+            od;
+
+            Print("\n  order ", o, " elements: ", Length(subset), "\n");
+            for p in profiles do
+                Print("    ", p, "\n");
+            od;
+        od;
+    end;;
+
+    ############################################################
+    # PART 2. Rebuild core groups
+    ############################################################
+
+    Print("\n============================================================\n");
+    Print("PART 2: CORE GROUPS\n");
+    Print("============================================================\n");
+
+    H26_43B := Group(g26_43A, f26_43A, t26_43A);;
+    B26_43B := Group(g26_43A, f26_43A);;
+    P26_43B := Group(g26_43A);;
+
+    q26_43B := g26_43A^t26_43A;;
+    Q26_43B := Group(q26_43B);;
+
+    Bt26_43B := Group(q26_43B, f26_43A);;
+
+    Print("Size(H26=<g,f,t>) = ", Size(H26_43B), "\n");
+    Print("Size(B=<g,f>) = ", Size(B26_43B), "\n");
+    Print("Size(P=<g>) = ", Size(P26_43B), "\n");
+    Print("Size(Q=<g^t>) = ", Size(Q26_43B), "\n");
+    Print("P = Q ? ", P26_43B = Q26_43B, "\n");
+    Print("Size(B^t=<g^t,f>) = ", Size(Bt26_43B), "\n");
+    Print("Size(<g,g^t>) = ", Size(Group(g26_43A, q26_43B)), "\n");
+
+    Print("\nAction exponents:\n");
+    Print("  f on P=<g>      = ", ActionExponentCyclic43B(g26_43A, f26_43A), "\n");
+    Print("  f on Q=<g^t>    = ", ActionExponentCyclic43B(q26_43B, f26_43A), "\n");
+    Print("  t on P=<g>      = ", ActionExponentCyclic43B(g26_43A, t26_43A), "\n");
+
+    ############################################################
+    # PART 3. Intersection B cap B^t
+    ############################################################
+
+    Print("\n============================================================\n");
+    Print("PART 3: B INTERSECTION B^t\n");
+    Print("============================================================\n");
+
+    IntB43B := Intersection(B26_43B, Bt26_43B);;
+    Fcyc43B := Group(f26_43A);;
+
+    Print("Size(B) = ", Size(B26_43B), "\n");
+    Print("Size(B^t) = ", Size(Bt26_43B), "\n");
+    Print("Size(B cap B^t) = ", Size(IntB43B), "\n");
+    Print("Size(<f>) = ", Size(Fcyc43B), "\n");
+    Print("B cap B^t = <f> ? ", IntB43B = Fcyc43B, "\n");
+
+    ############################################################
+    # PART 4. Order distributions in B and b*t
+    ############################################################
+
+    Print("\n============================================================\n");
+    Print("PART 4: ORDER DISTRIBUTIONS\n");
+    Print("============================================================\n");
+
+    Bnorm43B := NormalForms43B(g26_43A, f26_43A);;
+    Belts43B := List(Bnorm43B, r -> r.elt);;
+
+    Print("Distinct normal forms in B = ", Length(Set(Belts43B)), "\n");
+    PrintOrderDistribution43B("Order distribution inside B:", Belts43B);
+
+    BtProducts43B := List(Bnorm43B, r -> r.elt * t26_43A);;
+    PrintOrderDistribution43B("Order distribution of b*t for b in B:", BtProducts43B);
+
+    Print("\nAll b in B with Order(b*t)=3:\n");
+    BruhatBList43B := [];;
+
+    for r43B in Bnorm43B do
+        if Order(r43B.elt * t26_43A) = 3 then
+            Add(BruhatBList43B, r43B);
+            Print("  b = g^", r43B.i, " * f^", r43B.j, "\n");
+        fi;
+    od;
+
+    Print("Number of b with Order(b*t)=3 = ", Length(BruhatBList43B), "\n");
+
+    ############################################################
+    # PART 5. Exact-inverting external involutions in H
+    ############################################################
+
+    Print("\n============================================================\n");
+    Print("PART 5: EXACT-INVERTING EXTERNAL INVOLUTIONS IN H\n");
+    Print("============================================================\n");
+
+    HElts43B := Elements(H26_43B);;
+    HInvols43B := Filtered(HElts43B, x -> Order(x) = 2);;
+
+    ExtInv43B := [];;
+
+    for x43B in HInvols43B do
+        if f26_43A^x43B = f26_43A^-1
+           and not (x43B in B26_43B)
+           and ActionExponentCyclic43B(g26_43A, x43B) = fail
+           and Size(Group(g26_43A, f26_43A, x43B)) = 1092 then
+
+            witx43B := FindBruhatWitness43B(g26_43A, f26_43A, x43B);
+
+            Add(ExtInv43B, rec(
+                t := x43B,
+                witness := witx43B,
+                tr26 := TraceMat43B(x43B),
+                ordergt := Order(g26_43A * x43B)
+            ));
+        fi;
+    od;
+
+    Print("Number of external exact-inverting involutions = ", Length(ExtInv43B), "\n");
+
+    for i43B in [1..Length(ExtInv43B)] do
+        Print("  external t #", i43B,
+              ": Trace26(t)=", TraceLabel43B(ExtInv43B[i43B].tr26),
+              ", Order(g*t)=", ExtInv43B[i43B].ordergt);
+
+        if ExtInv43B[i43B].witness = fail then
+            Print(", witness=none\n");
+        else
+            Print(", witness b=g^", ExtInv43B[i43B].witness.i,
+                  " f^", ExtInv43B[i43B].witness.j, "\n");
+        fi;
+    od;
+
+    ############################################################
+    # PART 6. Trace profiles by element order
+    ############################################################
+
+    Print("\n============================================================\n");
+    Print("PART 6: TRACE PROFILES BY ELEMENT ORDER\n");
+    Print("============================================================\n");
+
+    PrintProfileByOrder43B(H26_43B);
+
+    ############################################################
+    # PART 7. p-regular comparison for old Brauer target
+    ############################################################
+
+    Print("\n============================================================\n");
+    Print("PART 7: p-REGULAR TRACE TARGET COMPARISON\n");
+    Print("============================================================\n");
+
+    Print("Named elements:\n");
+    Print("  g   order ", Order(g26_43A),
+          " | tr26=", TraceLabel43B(TraceMat43B(g26_43A)),
+          " | tr52=", TraceLabel43B(2 * TraceMat43B(g26_43A)), "\n");
+
+    Print("  f   order ", Order(f26_43A),
+          " | tr26=", TraceLabel43B(TraceMat43B(f26_43A)),
+          " | tr52=", TraceLabel43B(2 * TraceMat43B(f26_43A)), "\n");
+
+    Print("  f^2 order ", Order(f26_43A^2),
+          " | tr26=", TraceLabel43B(TraceMat43B(f26_43A^2)),
+          " | tr52=", TraceLabel43B(2 * TraceMat43B(f26_43A^2)), "\n");
+
+    Print("  f^3 order ", Order(f26_43A^3),
+          " | tr26=", TraceLabel43B(TraceMat43B(f26_43A^3)),
+          " | tr52=", TraceLabel43B(2 * TraceMat43B(f26_43A^3)), "\n");
+
+    Print("  t   order ", Order(t26_43A),
+          " | tr26=", TraceLabel43B(TraceMat43B(t26_43A)),
+          " | tr52=", TraceLabel43B(2 * TraceMat43B(t26_43A)), "\n");
+
+    Print("\nExpected old 52D target on g,f,f^2,f^3,t:\n");
+    Print("  0, 2, -2, -4, -4\n");
+
+    ############################################################
+    # PART 8. Final interpretation
+    ############################################################
+
+    Print("\n============================================================\n");
+    Print("PART 8: FINAL INTERPRETATION\n");
+    Print("============================================================\n");
+
+    Print("This confirms the abstract PSL2(13) fingerprint inside the successful 26D model.\n");
+    Print("We have P=<g>, Q=<g^t>, B=<g,f>, and B^t=<g^t,f>.\n");
+    Print("The key checks are B cap B^t, action exponents on P and Q,\n");
+    Print("the Order(b*t) distribution, and the exact-inverting external involutions.\n");
+    Print("Together with Step 43A, this is strong evidence for the supervisor's 12+14 and G2 route.\n");
+
+fi;
+
+Print("\n============================================================\n");
+Print("STEP 43B FINISHED\n");
+Print("============================================================\n");
+
+LogTo();
+
+
+
+
+############################################################
+############################################################
+# BEGIN STEP 43C: CONJUGACY-CLASS / BRAUER FINGERPRINT (ARCHIVE)
+############################################################
+############################################################
+
+
+############################################################
+# STEP 43C:
+# CONTINUE FROM STEP 43A/43B IN SAME SESSION
+#
+# Aim:
+#   Produce a clean conjugacy-class / Brauer-class table
+#   for the successful PSL2(13) image on:
+#
+#       12, 14, 26=12+14, 38=12+12+14, 52=14+38
+#
+# This gives a supervisor-ready class fingerprint:
+#
+#   class order
+#   class size
+#   traces on 12,14,26,38,52
+#   fixed-space dimensions on 12,14,26,38,52
+#   p-regular flag for characteristic 7
+#
+# It also identifies which conjugacy classes contain:
+#
+#       g, f, f^2, f^3, t, g*t
+#
+############################################################
+
+LogTo("STEP43C_CONJUGACY_CLASS_BRAUER_FINGERPRINT_LOG.txt");
+
+Print("\n============================================================\n");
+Print("STEP 43C: CONJUGACY-CLASS / BRAUER FINGERPRINT\n");
+Print("============================================================\n");
+
+if not IsBound(H26_43B) then
+    Print("H26_43B is not bound. Run Step 43B first, or use the Step 43A variables.\n");
+else
+
+    ############################################################
+    # PART 1. Helper functions
+    ############################################################
+
+    F7_43C := GF(7);;
+    one7_43C := One(F7_43C);;
+    zero7_43C := 0 * one7_43C;;
+
+    TraceMat43C := function(A)
+        local s, i;
+        s := zero7_43C;
+        for i in [1..Length(A)] do
+            s := s + A[i][i];
+        od;
+        return s;
+    end;;
+
+    TraceLabel43C := function(x)
+        if x = 0 * one7_43C then
+            return "0";
+        elif x = 1 * one7_43C then
+            return "1";
+        elif x = -1 * one7_43C then
+            return "-1";
+        elif x = 2 * one7_43C then
+            return "2";
+        elif x = -2 * one7_43C then
+            return "-2";
+        elif x = -4 * one7_43C then
+            return "-4";
+        else
+            return String(x);
+        fi;
+    end;;
+
+    TopLeftBlock43C := function(A, d)
+        local C, i, j;
+        C := NullMat(d, d, F7_43C);
+        for i in [1..d] do
+            for j in [1..d] do
+                C[i][j] := A[i][j];
+            od;
+        od;
+        return C;
+    end;;
+
+    BottomRightBlock43C := function(A, d)
+        local n, m, C, i, j;
+        n := Length(A);
+        m := n - d;
+        C := NullMat(m, m, F7_43C);
+        for i in [1..m] do
+            for j in [1..m] do
+                C[i][j] := A[d+i][d+j];
+            od;
+        od;
+        return C;
+    end;;
+
+    FixedDim43C := function(A)
+        return Length(NullspaceMat(A - A^0));
+    end;;
+
+    MakeClassRow43C := function(cls)
+        local x, x12, x14, tr12, tr14, tr26, tr38, tr52;
+        local fd12, fd14, fd26, fd38, fd52;
+
+        x := Representative(cls);
+
+        x12 := TopLeftBlock43C(x, 12);
+        x14 := BottomRightBlock43C(x, 12);
+
+        tr12 := TraceMat43C(x12);
+        tr14 := TraceMat43C(x14);
+        tr26 := tr12 + tr14;
+        tr38 := 2 * tr12 + tr14;
+        tr52 := 2 * tr12 + 2 * tr14;
+
+        fd12 := FixedDim43C(x12);
+        fd14 := FixedDim43C(x14);
+        fd26 := fd12 + fd14;
+        fd38 := 2 * fd12 + fd14;
+        fd52 := 2 * fd12 + 2 * fd14;
+
+        return rec(
+            cls := cls,
+            rep := x,
+            order := Order(x),
+            size := Size(cls),
+            tr12 := tr12,
+            tr14 := tr14,
+            tr26 := tr26,
+            tr38 := tr38,
+            tr52 := tr52,
+            fd12 := fd12,
+            fd14 := fd14,
+            fd26 := fd26,
+            fd38 := fd38,
+            fd52 := fd52
+        );
+    end;;
+
+    ClassIndexOf43C := function(classes, x)
+        local i;
+        for i in [1..Length(classes)] do
+            if x in classes[i] then
+                return i;
+            fi;
+        od;
+        return fail;
+    end;;
+
+    PrintClassRow43C := function(i, r)
+        local preg;
+
+        if r.order mod 7 = 0 then
+            preg := "no";
+        else
+            preg := "yes";
+        fi;
+
+        Print("  class ", i,
+              " | order=", r.order,
+              " | size=", r.size,
+              " | p-regular=", preg,
+              " | traces(12,14,26,38,52)=",
+              TraceLabel43C(r.tr12), ",",
+              TraceLabel43C(r.tr14), ",",
+              TraceLabel43C(r.tr26), ",",
+              TraceLabel43C(r.tr38), ",",
+              TraceLabel43C(r.tr52),
+              " | fixed(12,14,26,38,52)=",
+              r.fd12, ",", r.fd14, ",", r.fd26, ",", r.fd38, ",", r.fd52,
+              "\n");
+    end;;
+
+    ############################################################
+    # PART 2. Build conjugacy class rows
+    ############################################################
+
+    Print("\n============================================================\n");
+    Print("PART 2: CONJUGACY CLASSES OF H26\n");
+    Print("============================================================\n");
+
+    classes43C := ConjugacyClasses(H26_43B);;
+
+    Print("Number of conjugacy classes = ", Length(classes43C), "\n");
+    Print("Size(H26_43B) = ", Size(H26_43B), "\n");
+
+    classRows43C := [];;
+
+    for cls43C in classes43C do
+        Add(classRows43C, MakeClassRow43C(cls43C));
+    od;
+
+    Sort(classRows43C, function(a, b)
+        if a.order <> b.order then
+            return a.order < b.order;
+        elif a.size <> b.size then
+            return a.size < b.size;
+        elif a.fd26 <> b.fd26 then
+            return a.fd26 < b.fd26;
+        else
+            return TraceLabel43C(a.tr26) < TraceLabel43C(b.tr26);
+        fi;
+    end);;
+
+    Print("\nFull conjugacy-class table:\n");
+
+    for i43C in [1..Length(classRows43C)] do
+        PrintClassRow43C(i43C, classRows43C[i43C]);
+    od;
+
+    ############################################################
+    # PART 3. Class totals by order
+    ############################################################
+
+    Print("\n============================================================\n");
+    Print("PART 3: CLASS TOTALS BY ELEMENT ORDER\n");
+    Print("============================================================\n");
+
+    orderList43C := Set(List(classRows43C, r -> r.order));;
+
+    for o43C in orderList43C do
+        rowsO43C := Filtered(classRows43C, r -> r.order = o43C);;
+        Print("  order ", o43C,
+              " | number of classes = ", Length(rowsO43C),
+              " | number of elements = ",
+              Sum(List(rowsO43C, r -> r.size)), "\n");
+    od;
+
+    ############################################################
+    # PART 4. p-regular Brauer comparison table
+    ############################################################
+
+    Print("\n============================================================\n");
+    Print("PART 4: p-REGULAR BRAUER COMPARISON TABLE, p=7\n");
+    Print("============================================================\n");
+
+    pRegularRows43C := Filtered(classRows43C, r -> r.order mod 7 <> 0);;
+
+    Print("p-regular classes only, excluding order divisible by 7.\n");
+    Print("These are the classes relevant for characteristic-7 Brauer traces.\n\n");
+
+    for i43C in [1..Length(pRegularRows43C)] do
+        PrintClassRow43C(i43C, pRegularRows43C[i43C]);
+    od;
+
+    Print("\nExpected old 52D p-regular target on named classes:\n");
+    Print("  identity: dimension 52, printed in GF(7) as -4\n");
+    Print("  order 2: -4\n");
+    Print("  order 3: -2\n");
+    Print("  order 6: 2\n");
+    Print("  order 13: 0\n");
+
+    ############################################################
+    # PART 5. Named elements and class positions
+    ############################################################
+
+    Print("\n============================================================\n");
+    Print("PART 5: NAMED ELEMENT CLASS POSITIONS\n");
+    Print("============================================================\n");
+
+    # Need positions relative to unsorted GAP classes and sorted rows.
+    # For reporting, we find the sorted row matching by membership.
+
+    Named43C := [
+        rec(name := "g",   x := g26_43A),
+        rec(name := "f",   x := f26_43A),
+        rec(name := "f^2", x := f26_43A^2),
+        rec(name := "f^3", x := f26_43A^3),
+        rec(name := "t",   x := t26_43A),
+        rec(name := "g*t", x := g26_43A * t26_43A)
+    ];;
+
+    for n43C in Named43C do
+        idx43C := fail;;
+
+        for i43C in [1..Length(classRows43C)] do
+            if n43C.x in classRows43C[i43C].cls then
+                idx43C := i43C;
+            fi;
+        od;
+
+        if idx43C = fail then
+            Print("  ", n43C.name, ": class not found\n");
+        else
+            r43C := classRows43C[idx43C];
+
+            Print("  ", n43C.name,
+                  " | sorted class ", idx43C,
+                  " | order=", r43C.order,
+                  " | size=", r43C.size,
+                  " | traces(12,14,26,38,52)=",
+                  TraceLabel43C(r43C.tr12), ",",
+                  TraceLabel43C(r43C.tr14), ",",
+                  TraceLabel43C(r43C.tr26), ",",
+                  TraceLabel43C(r43C.tr38), ",",
+                  TraceLabel43C(r43C.tr52),
+                  " | fixed(12,14,26,38,52)=",
+                  r43C.fd12, ",", r43C.fd14, ",", r43C.fd26, ",", r43C.fd38, ",", r43C.fd52,
+                  "\n");
+        fi;
+    od;
+
+    ############################################################
+    # PART 6. Compact report block
+    ############################################################
+
+    Print("\n============================================================\n");
+    Print("PART 6: COMPACT REPORT BLOCK\n");
+    Print("============================================================\n");
+
+    Print("Compact result for report:\n");
+    Print("  H=<g,f,t> has order 1092.\n");
+    Print("  B=<g,f> has order 78 and 78 distinct normal forms g^i f^j.\n");
+    Print("  |g|=13, |f|=6, |t|=2.\n");
+    Print("  f acts on <g> by exponent 10.\n");
+    Print("  f^t=f^-1, t notin B, and t does not normalise <g>.\n");
+    Print("  Bruhat witness: b=g*f^0, with Order(b*t)=3.\n");
+    Print("  On V26=12+14-record #4, traces on g,f,f^2,f^3,t are 0,1,-1,-2,-2.\n");
+    Print("  Doubling gives the old 52D target 0,2,-2,-4,-4.\n");
+    Print("  The G2 fingerprint V52=14+(12+12+14)=2*12+2*14 is compatible with the old F4 adjoint trace target.\n");
+
+fi;
+
+Print("\n============================================================\n");
+Print("STEP 43C FINISHED\n");
+Print("============================================================\n");
+
+LogTo();
+
+
+
+
+############################################################
+############################################################
+# BEGIN STEP 43D: DIRECT CONJUGACY-CLASS / BRAUER TABLE
+############################################################
+############################################################
+
+
+############################################################
+# STEP 43D:
+# CONTINUE FROM STEP 43A/43B IN SAME SESSION
+#
+# Direct conjugacy-class / Brauer fingerprint table.
+#
+# This avoids the failed MakeClassRow43C function.
+# It uses the successful variables from Step 43A/43B:
+#
+#   H26_43B, g26_43A, f26_43A, t26_43A
+#   TraceMat43B, TraceLabel43B
+#   TopLeftBlock43B, BottomRightBlock43B, FixedDim43B
+#
+############################################################
+
+LogTo("STEP43D_DIRECT_CLASS_TABLE_LOG.txt");
+
+Print("\n============================================================\n");
+Print("STEP 43D: DIRECT CONJUGACY-CLASS / BRAUER TABLE\n");
+Print("============================================================\n");
+
+if not IsBound(H26_43B) then
+    H26_43B := Group(g26_43A, f26_43A, t26_43A);;
+fi;
+
+Print("Size(H26_43B) = ", Size(H26_43B), "\n");
+
+############################################################
+# PART 1. Build conjugacy classes
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 1: CONJUGACY CLASSES\n");
+Print("============================================================\n");
+
+classes43D := ConjugacyClasses(H26_43B);;
+
+Print("Number of conjugacy classes = ", Length(classes43D), "\n");
+
+ClassData43D := [];;
+
+for i43D in [1..Length(classes43D)] do
+
+    x43D := Representative(classes43D[i43D]);;
+
+    x12_43D := TopLeftBlock43B(x43D, 12);;
+    x14_43D := BottomRightBlock43B(x43D, 12);;
+
+    tr12_43D := TraceMat43B(x12_43D);;
+    tr14_43D := TraceMat43B(x14_43D);;
+    tr26_43D := tr12_43D + tr14_43D;;
+    tr38_43D := 2 * tr12_43D + tr14_43D;;
+    tr52_43D := 2 * tr12_43D + 2 * tr14_43D;;
+
+    fd12_43D := FixedDim43B(x12_43D);;
+    fd14_43D := FixedDim43B(x14_43D);;
+    fd26_43D := fd12_43D + fd14_43D;;
+    fd38_43D := 2 * fd12_43D + fd14_43D;;
+    fd52_43D := 2 * fd12_43D + 2 * fd14_43D;;
+
+    Add(ClassData43D, rec(
+        originalIndex := i43D,
+        cls := classes43D[i43D],
+        rep := x43D,
+        order := Order(x43D),
+        size := Size(classes43D[i43D]),
+        tr12 := tr12_43D,
+        tr14 := tr14_43D,
+        tr26 := tr26_43D,
+        tr38 := tr38_43D,
+        tr52 := tr52_43D,
+        fd12 := fd12_43D,
+        fd14 := fd14_43D,
+        fd26 := fd26_43D,
+        fd38 := fd38_43D,
+        fd52 := fd52_43D
+    ));
+
+od;
+
+Sort(ClassData43D, function(a,b)
+    if a.order <> b.order then
+        return a.order < b.order;
+    elif a.size <> b.size then
+        return a.size < b.size;
+    else
+        return a.originalIndex < b.originalIndex;
+    fi;
+end);;
+
+############################################################
+# PART 2. Full class table
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 2: FULL CLASS TABLE\n");
+Print("============================================================\n");
+
+for i43D in [1..Length(ClassData43D)] do
+
+    r43D := ClassData43D[i43D];;
+
+    if r43D.order mod 7 = 0 then
+        preg43D := "no";;
+    else
+        preg43D := "yes";;
+    fi;
+
+    Print("class ", i43D,
+          " | orig=", r43D.originalIndex,
+          " | order=", r43D.order,
+          " | size=", r43D.size,
+          " | p-regular=", preg43D,
+          " | traces(12,14,26,38,52)=",
+          TraceLabel43B(r43D.tr12), ",",
+          TraceLabel43B(r43D.tr14), ",",
+          TraceLabel43B(r43D.tr26), ",",
+          TraceLabel43B(r43D.tr38), ",",
+          TraceLabel43B(r43D.tr52),
+          " | fixed(12,14,26,38,52)=",
+          r43D.fd12, ",", r43D.fd14, ",", r43D.fd26, ",", r43D.fd38, ",", r43D.fd52,
+          "\n");
+
+od;
+
+############################################################
+# PART 3. Totals by order
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 3: TOTALS BY ELEMENT ORDER\n");
+Print("============================================================\n");
+
+orders43D := Set(List(ClassData43D, r -> r.order));;
+
+for o43D in orders43D do
+    rows43D := Filtered(ClassData43D, r -> r.order = o43D);;
+    Print("order ", o43D,
+          " | classes=", Length(rows43D),
+          " | elements=", Sum(List(rows43D, r -> r.size)),
+          "\n");
+od;
+
+############################################################
+# PART 4. p-regular Brauer table, p=7
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 4: p-REGULAR BRAUER TABLE, p=7\n");
+Print("============================================================\n");
+
+for i43D in [1..Length(ClassData43D)] do
+
+    r43D := ClassData43D[i43D];;
+
+    if r43D.order mod 7 <> 0 then
+        Print("p-class ", i43D,
+              " | order=", r43D.order,
+              " | size=", r43D.size,
+              " | traces(12,14,26,38,52)=",
+              TraceLabel43B(r43D.tr12), ",",
+              TraceLabel43B(r43D.tr14), ",",
+              TraceLabel43B(r43D.tr26), ",",
+              TraceLabel43B(r43D.tr38), ",",
+              TraceLabel43B(r43D.tr52),
+              "\n");
+    fi;
+
+od;
+
+Print("\nExpected old 52D target on p-regular named orders:\n");
+Print("  order 1: dimension 52, printed as -4 in GF(7)\n");
+Print("  order 2: -4\n");
+Print("  order 3: -2\n");
+Print("  order 6: 2\n");
+Print("  order 13: 0\n");
+
+############################################################
+# PART 5. Named elements class positions
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 5: NAMED ELEMENT CLASS POSITIONS\n");
+Print("============================================================\n");
+
+Named43D := [
+    rec(name := "g",   x := g26_43A),
+    rec(name := "f",   x := f26_43A),
+    rec(name := "f^2", x := f26_43A^2),
+    rec(name := "f^3", x := f26_43A^3),
+    rec(name := "t",   x := t26_43A),
+    rec(name := "g*t", x := g26_43A * t26_43A)
+];;
+
+for n43D in Named43D do
+
+    found43D := fail;;
+
+    for i43D in [1..Length(ClassData43D)] do
+        classElts43D := Elements(ClassData43D[i43D].cls);;
+
+        if n43D.x in classElts43D then
+            found43D := i43D;;
+        fi;
+    od;
+
+    if found43D = fail then
+
+        Print(n43D.name, ": class not found\n");
+
+    else
+
+        r43D := ClassData43D[found43D];;
+
+        Print(n43D.name,
+              " | class=", found43D,
+              " | order=", r43D.order,
+              " | size=", r43D.size,
+              " | traces(12,14,26,38,52)=",
+              TraceLabel43B(r43D.tr12), ",",
+              TraceLabel43B(r43D.tr14), ",",
+              TraceLabel43B(r43D.tr26), ",",
+              TraceLabel43B(r43D.tr38), ",",
+              TraceLabel43B(r43D.tr52),
+              " | fixed(12,14,26,38,52)=",
+              r43D.fd12, ",", r43D.fd14, ",", r43D.fd26, ",", r43D.fd38, ",", r43D.fd52,
+              "\n");
+
+    fi;
+
+od;
+
+############################################################
+# PART 6. Compare with known PSL2(13) class pattern
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 6: PSL2(13) CLASS PATTERN CHECK\n");
+Print("============================================================\n");
+
+Print("Expected PSL2(13) element counts:\n");
+Print("  order 1: 1\n");
+Print("  order 2: 91\n");
+Print("  order 3: 182\n");
+Print("  order 6: 182\n");
+Print("  order 7: 468\n");
+Print("  order 13: 168\n");
+
+Print("\nComputed from class table:\n");
+
+for o43D in orders43D do
+    rows43D := Filtered(ClassData43D, r -> r.order = o43D);;
+    Print("  order ", o43D, ": ",
+          Sum(List(rows43D, r -> r.size)), "\n");
+od;
+
+############################################################
+# PART 7. Compact report block
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 7: COMPACT REPORT BLOCK\n");
+Print("============================================================\n");
+
+Print("Compact result:\n");
+Print("  H=<g,f,t> has order 1092.\n");
+Print("  B=<g,f> has order 78 and 78 distinct normal forms g^i f^j.\n");
+Print("  |g|=13, |f|=6, |t|=2.\n");
+Print("  f acts on <g> by exponent 10.\n");
+Print("  f^t=f^-1, t notin B, and t does not normalise <g>.\n");
+Print("  Bruhat witness: b=g*f^0, with Order(b*t)=3.\n");
+Print("  On V26=12+14-record #4, traces on g,f,f^2,f^3,t are 0,1,-1,-2,-2.\n");
+Print("  Doubling gives the old 52D target 0,2,-2,-4,-4.\n");
+Print("  The G2 fingerprint V52=14+(12+12+14)=2*12+2*14 is compatible with the old F4 adjoint trace target.\n");
+
+Print("\n============================================================\n");
+Print("STEP 43D FINISHED\n");
+Print("============================================================\n");
+
+LogTo();
+
+
+
+
+############################################################
+############################################################
+# BEGIN STEP 43E: BRAUER TABLE DECOMPOSITION CHECK
+############################################################
+############################################################
+
+
+############################################################
+# STEP 43E:
+# CONTINUE FROM STEP 43D IN SAME SESSION
+#
+# Aim:
+#   Compare our computed class traces with the official
+#   characteristic-7 Brauer table of L2(13).
+#
+# We use the successful computed fingerprints:
+#
+#   V12 traces:
+#       order 1  = 12
+#       order 2  = 0
+#       order 3  = 0
+#       order 6  = 0
+#       order 13 = -1
+#
+#   V14 traces:
+#       order 1  = 14
+#       order 2  = -2
+#       order 3  = -1
+#       order 6  = 1
+#       order 13 = 1
+#
+# Therefore:
+#
+#   V26 = 12 + 14:
+#       26, -2, -1, 1, 0, 0
+#
+#   V38 = 12 + 12 + 14:
+#       38, -2, -1, 1, -1, -1
+#
+#   V52 = 14 + 38 = 2*12 + 2*14:
+#       52, -4, -2, 2, 0, 0
+#
+# This step prints:
+#   - official Brauer irreducibles
+#   - computed target vectors in Brauer-class order
+#   - decompositions via SolutionMat
+############################################################
+
+LogTo("STEP43E_BRAUER_TABLE_DECOMPOSITION_LOG.txt");
+
+Print("\n============================================================\n");
+Print("STEP 43E: BRAUER TABLE DECOMPOSITION CHECK\n");
+Print("============================================================\n");
+
+############################################################
+# PART 0. Load CTBLib / Brauer table
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 0: LOAD CHARACTER TABLE DATA\n");
+Print("============================================================\n");
+
+ctb43E := LoadPackage("ctbllib");;
+
+Print("LoadPackage(\"ctbllib\") returned: ", ctb43E, "\n");
+
+tbl43E := CharacterTable("L2(13)");;
+
+if tbl43E = fail then
+    Print("CharacterTable(\"L2(13)\") failed, trying PSL(2,13).\n");
+    tbl43E := CharacterTable("PSL(2,13)");;
+fi;
+
+if tbl43E = fail then
+
+    Print("Could not load a character table for L2(13)/PSL(2,13).\n");
+    Print("Stop here.\n");
+
+else
+
+    Print("Loaded ordinary character table: ", Identifier(tbl43E), "\n");
+
+    br43E := BrauerTable(tbl43E, 7);;
+
+    if br43E = fail then
+
+        Print("BrauerTable(tbl,7) failed.\n");
+        Print("Stop here.\n");
+
+    else
+
+        Print("Loaded Brauer table in characteristic 7: ",
+              Identifier(br43E), "\n");
+
+        orders43E := OrdersClassRepresentatives(br43E);;
+        sizes43E := SizesConjugacyClasses(br43E);;
+        irr43E := Irr(br43E);;
+
+        Print("Brauer class orders = ", orders43E, "\n");
+        Print("Brauer class sizes  = ", sizes43E, "\n");
+        Print("Number of irreducible Brauer characters = ",
+              Length(irr43E), "\n");
+
+        ############################################################
+        # PART 1. Print irreducible Brauer characters
+        ############################################################
+
+        Print("\n============================================================\n");
+        Print("PART 1: IRREDUCIBLE BRAUER CHARACTERS\n");
+        Print("============================================================\n");
+
+        for i43E in [1..Length(irr43E)] do
+            Print("irr #", i43E,
+                  " | degree=", irr43E[i43E][1],
+                  " | values=", List(irr43E[i43E], x -> x),
+                  "\n");
+        od;
+
+        ############################################################
+        # PART 2. Target vectors in the Brauer class order
+        ############################################################
+
+        Value12ByOrder43E := function(o)
+            if o = 1 then
+                return 12;
+            elif o = 2 then
+                return 0;
+            elif o = 3 then
+                return 0;
+            elif o = 6 then
+                return 0;
+            elif o = 13 then
+                return -1;
+            else
+                return fail;
+            fi;
+        end;;
+
+        Value14ByOrder43E := function(o)
+            if o = 1 then
+                return 14;
+            elif o = 2 then
+                return -2;
+            elif o = 3 then
+                return -1;
+            elif o = 6 then
+                return 1;
+            elif o = 13 then
+                return 1;
+            else
+                return fail;
+            fi;
+        end;;
+
+        vec12_43E := List(orders43E, o -> Value12ByOrder43E(o));;
+        vec14_43E := List(orders43E, o -> Value14ByOrder43E(o));;
+        vec26_43E := vec12_43E + vec14_43E;;
+        vec38_43E := 2 * vec12_43E + vec14_43E;;
+        vec52_43E := 2 * vec12_43E + 2 * vec14_43E;;
+
+        Print("\n============================================================\n");
+        Print("PART 2: TARGET VECTORS IN BRAUER CLASS ORDER\n");
+        Print("============================================================\n");
+
+        Print("Brauer class order list = ", orders43E, "\n");
+        Print("V12 target = ", vec12_43E, "\n");
+        Print("V14 target = ", vec14_43E, "\n");
+        Print("V26=12+14 target = ", vec26_43E, "\n");
+        Print("V38=12+12+14 target = ", vec38_43E, "\n");
+        Print("V52=2*12+2*14 target = ", vec52_43E, "\n");
+
+        ############################################################
+        # PART 3. Decomposition helper
+        ############################################################
+
+        PrintSol43E := function(name, vec, sol)
+            local i, first;
+
+            Print("\n", name, "\n");
+            Print("  target vector = ", vec, "\n");
+
+            if sol = fail then
+                Print("  SolutionMat failed.\n");
+                return;
+            fi;
+
+            Print("  coefficients = ", sol, "\n");
+            Print("  decomposition: ");
+
+            first := true;
+
+            for i in [1..Length(sol)] do
+                if sol[i] <> 0 then
+                    if first = false then
+                        Print(" + ");
+                    fi;
+
+                    Print(sol[i], "*irr#", i,
+                          "(deg ", irr43E[i][1], ")");
+
+                    first := false;
+                fi;
+            od;
+
+            if first = true then
+                Print("0");
+            fi;
+
+            Print("\n");
+        end;;
+
+        matIrr43E := List(irr43E, chi -> List(chi, x -> x));;
+
+        ############################################################
+        # PART 4. Decompose target vectors
+        ############################################################
+
+        Print("\n============================================================\n");
+        Print("PART 4: DECOMPOSITIONS BY SOLUTIONMAT\n");
+        Print("============================================================\n");
+
+        sol12_43E := SolutionMat(matIrr43E, vec12_43E);;
+        sol14_43E := SolutionMat(matIrr43E, vec14_43E);;
+        sol26_43E := SolutionMat(matIrr43E, vec26_43E);;
+        sol38_43E := SolutionMat(matIrr43E, vec38_43E);;
+        sol52_43E := SolutionMat(matIrr43E, vec52_43E);;
+
+        PrintSol43E("V12", vec12_43E, sol12_43E);
+        PrintSol43E("V14 record #4", vec14_43E, sol14_43E);
+        PrintSol43E("V26 = 12 + 14", vec26_43E, sol26_43E);
+        PrintSol43E("V38 = 12 + 12 + 14", vec38_43E, sol38_43E);
+        PrintSol43E("V52 = 2*12 + 2*14", vec52_43E, sol52_43E);
+
+        ############################################################
+        # PART 5. Manual summary
+        ############################################################
+
+        Print("\n============================================================\n");
+        Print("PART 5: MANUAL INTERPRETATION\n");
+        Print("============================================================\n");
+
+        Print("The computed V26 from Step 43A/43B/43D has traces:\n");
+        Print("  V26 on orders 1,2,3,6,13,13 = ",
+              vec26_43E, "\n");
+
+        Print("The computed V52 fingerprint has traces:\n");
+        Print("  V52 on orders 1,2,3,6,13,13 = ",
+              vec52_43E, "\n");
+
+        Print("\nExpected interpretation:\n");
+        Print("  V26 = 12 + 14-record #4.\n");
+        Print("  V38 = 12 + 12 + 14-record #4.\n");
+        Print("  V52 = 14 + V38 = 2*12 + 2*14-record #4.\n");
+        Print("  This is compatible with the supervisor's possible G2 route:\n");
+        Print("      L(F4)|G2 = 14 + 38,\n");
+        Print("      and 38|L2(13) = 12 + 12 + 14.\n");
+
+        ############################################################
+        # PART 6. Cross-check with named class traces from Step 43D
+        ############################################################
+
+        Print("\n============================================================\n");
+        Print("PART 6: NAMED ELEMENT TRACE CROSS-CHECK\n");
+        Print("============================================================\n");
+
+        if IsBound(g26_43A) and IsBound(f26_43A) and IsBound(t26_43A) then
+
+            Print("Named elements from the constructed triple:\n");
+            Print("  g   order ", Order(g26_43A),
+                  " | expected V26 trace 0 | expected V52 trace 0\n");
+            Print("  f   order ", Order(f26_43A),
+                  " | expected V26 trace 1 | expected V52 trace 2\n");
+            Print("  f^2 order ", Order(f26_43A^2),
+                  " | expected V26 trace -1 | expected V52 trace -2\n");
+            Print("  f^3 order ", Order(f26_43A^3),
+                  " | expected V26 trace -2 | expected V52 trace -4\n");
+            Print("  t   order ", Order(t26_43A),
+                  " | expected V26 trace -2 | expected V52 trace -4\n");
+            Print("  g*t order ", Order(g26_43A * t26_43A),
+                  " | expected V26 trace -1 | expected V52 trace -2\n");
+
+        else
+
+            Print("Named elements g26_43A, f26_43A, t26_43A not bound.\n");
+
+        fi;
+
+    fi;
+fi;
+
+Print("\n============================================================\n");
+Print("STEP 43E FINISHED\n");
+Print("============================================================\n");
+
+LogTo();
+

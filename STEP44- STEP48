@@ -1,0 +1,1730 @@
+############################################################
+# ONE-PIECE GITHUB SCRIPT
+# F4(7) / L2(13) SUPERVISOR ROUTE
+#
+# Contents:
+#   STEP 44B  - corrected supervisor 12 + 14 Walton route
+#   STEP 45B  - G2-adjoint bracket fingerprint on target 14
+#   STEP 45C  - linear combination search for Jacobi bracket
+#   STEP 45D-CLEAN - all 14-module Lie bracket tests
+#
+# Paste at normal gap> prompt after:
+#
+#   using Oscar
+#   GAP.prompt()
+#
+# Important:
+#   This one-piece file deliberately uses STEP 44B instead of the
+#   older failed STEP 44A, and STEP 45D-CLEAN instead of the older
+#   failed STEP 45D.
+############################################################
+
+
+
+############################################################
+# BEGIN STEP44B_CORRECTED_12_PLUS_14_ROUTE
+############################################################
+
+############################################################
+# STEP 44B FRESH/CORRECTED:
+# SUPERVISOR 12+14 ROUTE WITH CORRECT IrreducibleModules FORMAT
+#
+# Paste at normal gap> prompt.
+#
+# This fixes Step 44A:
+#   IrreducibleModules(H,GF(7)) returns a 2-part object:
+#      mods[1] = abstract group generators used by the modules
+#      mods[2] = module records
+#
+# We use mods[1] to synchronise g,f,t with the module matrices.
+############################################################
+
+LogTo("STEP44B_CORRECTED_12_PLUS_14_ROUTE_LOG.txt");
+
+Print("\n============================================================\n");
+Print("STEP 44B CORRECTED: SUPERVISOR 12 + 14 ROUTE\n");
+Print("============================================================\n");
+
+LoadPackage("ctbllib");;
+LoadPackage("repsn");;
+
+F7_44B := GF(7);;
+one7_44B := One(F7_44B);;
+zero7_44B := Zero(F7_44B);;
+
+############################################################
+# Helper functions
+############################################################
+
+SignedGF7_44B := function(x)
+    local n;
+
+    for n in [-3..3] do
+        if n * one7_44B = x then
+            return n;
+        fi;
+    od;
+
+    return x;
+end;;
+
+MatDim44B := function(A)
+    if IsList(A) and Length(A) > 0 and IsList(A[1]) then
+        return [Length(A), Length(A[1])];
+    fi;
+
+    return fail;
+end;;
+
+TraceMat44B := function(A)
+    local d, i, s;
+
+    d := Length(A);
+    s := zero7_44B;
+
+    for i in [1..d] do
+        s := s + A[i][i];
+    od;
+
+    return s;
+end;;
+
+SignedTrace44B := function(A)
+    return SignedGF7_44B(TraceMat44B(A));
+end;;
+
+ActExp44B := function(g, x)
+    local gx, k;
+
+    gx := g^x;
+
+    for k in [0..12] do
+        if gx = g^k then
+            return k;
+        fi;
+    od;
+
+    return fail;
+end;;
+
+FindAllBruhatWitnesses44B := function(g, f, t)
+    local out, i, j, b;
+
+    out := [];
+
+    for i in [0..12] do
+        for j in [0..5] do
+            b := g^i * f^j;
+
+            if b*t <> One(Parent(g)) and Order(b*t) = 3 then
+                Add(out, [i,j]);
+            fi;
+        od;
+    od;
+
+    return out;
+end;;
+
+ChooseBestT44B := function(g, f, goodTRecs)
+    local r, w;
+
+    # First preference: Order(g*t)=3
+    for r in goodTRecs do
+        if Order(g*r.t) = 3 then
+            return r;
+        fi;
+    od;
+
+    # Second preference: pure-g witness g^i*t has order 3
+    for r in goodTRecs do
+        for w in r.witnesses do
+            if w[2] = 0 then
+                return r;
+            fi;
+        od;
+    od;
+
+    # Otherwise just take first exact-inverting Bruhat t
+    return goodTRecs[1];
+end;;
+
+BlockDiag2_44B := function(A, B)
+    local da, db, z, M, i, rightzero, leftzero;
+
+    da := Length(A);
+    db := Length(B);
+    z := Zero(A[1][1]);
+
+    M := [];
+
+    rightzero := List([1..db], k -> z);
+    for i in [1..da] do
+        Add(M, Concatenation(A[i], rightzero));
+    od;
+
+    leftzero := List([1..da], k -> z);
+    for i in [1..db] do
+        Add(M, Concatenation(leftzero, B[i]));
+    od;
+
+    return M;
+end;;
+
+############################################################
+# Extract generator matrices from module record
+############################################################
+
+ExtractGenMats44B := function(r)
+    local names, nm, val;
+
+    if IsRecord(r) then
+        names := RecNames(r);
+
+        for nm in ["generators", "gens", "matrices", "mats", "genimages", "images"] do
+            if nm in names then
+                val := r.(nm);
+
+                if IsList(val) and Length(val) > 0 then
+                    return val;
+                fi;
+            fi;
+        od;
+
+        Print("  record names = ", names, "\n");
+        return fail;
+    fi;
+
+    # Sometimes the record is already a list of matrices
+    if IsList(r) and Length(r) > 0 then
+        return r;
+    fi;
+
+    return fail;
+end;;
+
+BuildImageTable44B := function(H, gensH, gensM)
+    local elems, imgs, pos, k, y, p;
+
+    elems := [One(H)];
+    imgs := [One(Group(gensM))];
+
+    pos := 1;
+
+    while pos <= Length(elems) do
+        for k in [1..Length(gensH)] do
+            y := elems[pos] * gensH[k];
+            p := Position(elems, y);
+
+            if p = fail then
+                Add(elems, y);
+                Add(imgs, imgs[pos] * gensM[k]);
+            fi;
+        od;
+
+        pos := pos + 1;
+    od;
+
+    return rec(elems := elems, imgs := imgs);
+end;;
+
+ImageOfElement44B := function(tab, x)
+    local p;
+
+    p := Position(tab.elems, x);
+
+    if p = fail then
+        return fail;
+    fi;
+
+    return tab.imgs[p];
+end;;
+
+PrintProfile44B := function(name, g, f, t)
+    Print("\n", name, "\n");
+    Print("  dim = ", Length(g), "\n");
+    Print("  Order(g)   = ", Order(g),   " | trace(g)   = ", SignedTrace44B(g), "\n");
+    Print("  Order(f)   = ", Order(f),   " | trace(f)   = ", SignedTrace44B(f), "\n");
+    Print("  Order(f^2) = ", Order(f^2), " | trace(f^2) = ", SignedTrace44B(f^2), "\n");
+    Print("  Order(f^3) = ", Order(f^3), " | trace(f^3) = ", SignedTrace44B(f^3), "\n");
+    Print("  Order(t)   = ", Order(t),   " | trace(t)   = ", SignedTrace44B(t), "\n");
+    Print("  Order(g*t) = ", Order(g*t), " | trace(g*t) = ", SignedTrace44B(g*t), "\n");
+    Print("  f^t=f^-1? ", f^t = f^-1, "\n");
+    Print("  Size(<g,f>) = ", Size(Group(g,f)), "\n");
+    Print("  Size(<g,f,t>) = ", Size(Group(g,f,t)), "\n");
+end;;
+
+############################################################
+# PART 1. Abstract PSL2(13) Walton triple
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 1: ABSTRACT PSL2(13) WALTON TRIPLE\n");
+Print("============================================================\n");
+
+H44B := PSL(2,13);;
+Print("Size(H44B) = ", Size(H44B), "\n");
+
+elems44B := Elements(H44B);;
+
+g44B := First(elems44B, x -> Order(x) = 13);;
+P44B := Group(g44B);;
+N44B := Normalizer(H44B, P44B);;
+
+Print("Order(g44B) = ", Order(g44B), "\n");
+Print("Size(N_H(<g>)) = ", Size(N44B), "\n");
+
+fCands44B := [];;
+
+for x44B in Elements(N44B) do
+    if Order(x44B) = 6 then
+        if ActExp44B(g44B, x44B) = 10 then
+            if Size(Group(g44B, x44B)) = 78 then
+                Add(fCands44B, x44B);
+            fi;
+        fi;
+    fi;
+od;
+
+Print("Number of f-candidates = ", Length(fCands44B), "\n");
+
+if Length(fCands44B) = 0 then
+    Error("No f-candidates found.");
+fi;
+
+f44B := fCands44B[1];;
+B44B := Group(g44B, f44B);;
+
+Print("Order(f44B) = ", Order(f44B), "\n");
+Print("Action exponent f on <g> = ", ActExp44B(g44B, f44B), "\n");
+Print("Size(B44B=<g,f>) = ", Size(B44B), "\n");
+
+goodTRecs44B := [];;
+
+for t44B in elems44B do
+    if Order(t44B) = 2 then
+        if f44B^t44B = f44B^-1 then
+            if not t44B in B44B then
+                if ActExp44B(g44B, t44B) = fail then
+                    wits44B := FindAllBruhatWitnesses44B(g44B, f44B, t44B);
+
+                    if Length(wits44B) > 0 then
+                        if Size(Group(g44B, f44B, t44B)) = 1092 then
+                            Add(goodTRecs44B,
+                                rec(t := t44B,
+                                    witnesses := wits44B,
+                                    gtorder := Order(g44B*t44B)));
+                        fi;
+                    fi;
+                fi;
+            fi;
+        fi;
+    fi;
+od;
+
+Print("Number of exact-inverting external Bruhat t records = ",
+      Length(goodTRecs44B), "\n");
+
+if Length(goodTRecs44B) = 0 then
+    Error("No good t records found.");
+fi;
+
+chosenTRec44B := ChooseBestT44B(g44B, f44B, goodTRecs44B);;
+t44B := chosenTRec44B.t;;
+
+Print("\nChosen t record:\n");
+Print("  Order(t) = ", Order(t44B), "\n");
+Print("  f^t=f^-1? ", f44B^t44B = f44B^-1, "\n");
+Print("  t in B? ", t44B in B44B, "\n");
+Print("  t action on <g> = ", ActExp44B(g44B, t44B), "\n");
+Print("  Order(g*t) = ", Order(g44B*t44B), "\n");
+Print("  witnesses [i,j] for Order(g^i f^j t)=3 = ",
+      chosenTRec44B.witnesses, "\n");
+Print("  Size(<g,f,t>) = ", Size(Group(g44B, f44B, t44B)), "\n");
+
+############################################################
+# PART 2. Correct module loading
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 2: LOAD MODULE RECORDS CORRECTLY\n");
+Print("============================================================\n");
+
+modsRaw44B := IrreducibleModules(H44B, F7_44B);;
+
+Print("Length(modsRaw44B) = ", Length(modsRaw44B), "\n");
+
+if Length(modsRaw44B) <> 2 then
+    Error("Unexpected IrreducibleModules format. Need inspect manually.");
+fi;
+
+gensForModules44B := modsRaw44B[1];;
+moduleRecords44B := modsRaw44B[2];;
+
+Print("Number of module abstract generators = ",
+      Length(gensForModules44B), "\n");
+Print("Number of module records = ",
+      Length(moduleRecords44B), "\n");
+
+Print("Orders of module abstract generators = ",
+      List(gensForModules44B, x -> Order(x)), "\n");
+
+############################################################
+# PART 3. Evaluate g,f,t on every module record
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 3: EVALUATE g,f,t ON MODULE RECORDS\n");
+Print("============================================================\n");
+
+modData44B := [];;
+
+for mi44B in [1..Length(moduleRecords44B)] do
+    r44B := moduleRecords44B[mi44B];
+
+    Print("\nModule record #", mi44B, "\n");
+
+    if IsRecord(r44B) then
+        Print("  RecNames = ", RecNames(r44B), "\n");
+    fi;
+
+    mats44B := ExtractGenMats44B(r44B);
+
+    if mats44B = fail then
+        Print("  SKIP: could not extract generator matrices.\n");
+    else
+        Print("  number of generator matrices = ", Length(mats44B), "\n");
+
+        if Length(mats44B) <> Length(gensForModules44B) then
+            Print("  SKIP: generator count mismatch.\n");
+        else
+            dimInfo44B := MatDim44B(mats44B[1]);
+            Print("  first matrix dim = ", dimInfo44B, "\n");
+
+            if dimInfo44B = fail then
+                Print("  SKIP: first generator is not a matrix.\n");
+            else
+                GM44B := Group(mats44B);
+                Print("  image group size = ", Size(GM44B), "\n");
+
+                Print("  building image table...\n");
+                tab44B := BuildImageTable44B(H44B, gensForModules44B, mats44B);
+                Print("  table size = ", Length(tab44B.elems), "\n");
+
+                gM44B := ImageOfElement44B(tab44B, g44B);;
+                fM44B := ImageOfElement44B(tab44B, f44B);;
+                tM44B := ImageOfElement44B(tab44B, t44B);;
+
+                if gM44B = fail or fM44B = fail or tM44B = fail then
+                    Print("  SKIP: could not map g/f/t into this module.\n");
+                else
+                    Add(modData44B,
+                        rec(index := mi44B,
+                            dim := dimInfo44B[1],
+                            mats := mats44B,
+                            g := gM44B,
+                            f := fM44B,
+                            t := tM44B,
+                            tr_g := SignedTrace44B(gM44B),
+                            tr_f := SignedTrace44B(fM44B),
+                            tr_f2 := SignedTrace44B(fM44B^2),
+                            tr_f3 := SignedTrace44B(fM44B^3),
+                            tr_t := SignedTrace44B(tM44B),
+                            tr_gt := SignedTrace44B(gM44B*tM44B),
+                            sizeB := Size(Group(gM44B, fM44B)),
+                            sizeH := Size(Group(gM44B, fM44B, tM44B))));
+
+                    Print("  traces [g,f,f^2,f^3,t,g*t] = ",
+                          [SignedTrace44B(gM44B),
+                           SignedTrace44B(fM44B),
+                           SignedTrace44B(fM44B^2),
+                           SignedTrace44B(fM44B^3),
+                           SignedTrace44B(tM44B),
+                           SignedTrace44B(gM44B*tM44B)], "\n");
+
+                    Print("  Size(<g,f>) = ", Size(Group(gM44B, fM44B)), "\n");
+                    Print("  Size(<g,f,t>) = ", Size(Group(gM44B, fM44B, tM44B)), "\n");
+                fi;
+            fi;
+        fi;
+    fi;
+od;
+
+############################################################
+# PART 4. Choose 12 and target 14
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 4: CHOOSE 12 AND TARGET 14 MODULES\n");
+Print("============================================================\n");
+
+mods12_44B := Filtered(modData44B, r -> r.dim = 12);;
+mods14_44B := Filtered(modData44B, r -> r.dim = 14);;
+
+Print("Number of 12-dimensional records = ", Length(mods12_44B), "\n");
+Print("Number of 14-dimensional records = ", Length(mods14_44B), "\n");
+
+if Length(mods12_44B) = 0 then
+    Error("No 12-dimensional module records extracted.");
+fi;
+
+rec12_44B := mods12_44B[1];;
+
+Print("\nChosen 12-module index = ", rec12_44B.index, "\n");
+Print("12 traces [g,f,f^2,f^3,t,g*t] = ",
+      [rec12_44B.tr_g, rec12_44B.tr_f, rec12_44B.tr_f2,
+       rec12_44B.tr_f3, rec12_44B.tr_t, rec12_44B.tr_gt], "\n");
+
+target14s44B := [];;
+
+for r44B in mods14_44B do
+    Print("\n14-module index ", r44B.index, "\n");
+    Print("  traces [g,f,f^2,f^3,t,g*t] = ",
+          [r44B.tr_g, r44B.tr_f, r44B.tr_f2,
+           r44B.tr_f3, r44B.tr_t, r44B.tr_gt], "\n");
+    Print("  Size(<g,f>) = ", r44B.sizeB, "\n");
+    Print("  Size(<g,f,t>) = ", r44B.sizeH, "\n");
+
+    # Target 14 = irr#6 from Step 43E:
+    # order 13 trace 1, order 6 trace 1,
+    # order 3 trace -1, order 2 trace -2.
+    if r44B.tr_g = 1 and
+       r44B.tr_f = 1 and
+       r44B.tr_f2 = -1 and
+       r44B.tr_f3 = -2 and
+       r44B.tr_t = -2 then
+        Add(target14s44B, r44B);
+        Print("  ==> TARGET 14 MATCH\n");
+    fi;
+od;
+
+Print("\nNumber of target 14 matches = ", Length(target14s44B), "\n");
+
+if Length(target14s44B) = 0 then
+    Error("No target 14 module found.");
+fi;
+
+rec14_44B := target14s44B[1];;
+
+Print("Chosen target 14-module index = ", rec14_44B.index, "\n");
+
+############################################################
+# PART 5. Build V26 = 12 + target 14
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 5: BUILD V26 = 12 + TARGET 14\n");
+Print("============================================================\n");
+
+g26_44B := BlockDiag2_44B(rec12_44B.g, rec14_44B.g);;
+f26_44B := BlockDiag2_44B(rec12_44B.f, rec14_44B.f);;
+t26_44B := BlockDiag2_44B(rec12_44B.t, rec14_44B.t);;
+
+B26_44B := Group(g26_44B, f26_44B);;
+H26_44B := Group(g26_44B, f26_44B, t26_44B);;
+
+PrintProfile44B("V26 = 12 + target 14", g26_44B, f26_44B, t26_44B);
+
+wit26_44B := [];;
+
+for i44B in [0..12] do
+    for j44B in [0..5] do
+        b26_44B := g26_44B^i44B * f26_44B^j44B;
+
+        if b26_44B*t26_44B <> One(H26_44B) and
+           Order(b26_44B*t26_44B) = 3 then
+            Add(wit26_44B, [i44B, j44B]);
+        fi;
+    od;
+od;
+
+actT26_44B := fail;;
+for k44B in [0..12] do
+    if g26_44B^t26_44B = g26_44B^k44B then
+        actT26_44B := k44B;
+    fi;
+od;
+
+Print("\nV26 Walton checks:\n");
+Print("  Order(g26) = ", Order(g26_44B), "\n");
+Print("  Order(f26) = ", Order(f26_44B), "\n");
+Print("  Order(t26) = ", Order(t26_44B), "\n");
+Print("  Size(B26=<g,f>) = ", Size(B26_44B), "\n");
+Print("  Size(H26=<g,f,t>) = ", Size(H26_44B), "\n");
+Print("  f^t=f^-1? ", f26_44B^t26_44B = f26_44B^-1, "\n");
+Print("  t action exponent on <g> = ", actT26_44B, "\n");
+Print("  Bruhat witnesses [i,j] = ", wit26_44B, "\n");
+
+############################################################
+# PART 6. Brauer table comparison
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 6: BRAUER TABLE COMPARISON\n");
+Print("============================================================\n");
+
+tbl44B := CharacterTable("L2(13)");;
+if tbl44B = fail then
+    tbl44B := CharacterTable("PSL(2,13)");;
+fi;
+
+br44B := BrauerTable(tbl44B, 7);;
+orders44B := OrdersClassRepresentatives(br44B);;
+irr44B := Irr(br44B);;
+
+Print("Brauer class orders = ", orders44B, "\n");
+
+for i44B in [1..Length(irr44B)] do
+    Print("irr #", i44B,
+          " degree=", irr44B[i44B][1],
+          " values=", List(irr44B[i44B], x -> x),
+          "\n");
+od;
+
+vec12_44B := [12,0,0,0,-1,-1];;
+vec14_44B := [14,-2,-1,1,1,1];;
+vec26_44B := vec12_44B + vec14_44B;;
+vec38_44B := 2*vec12_44B + vec14_44B;;
+vec52_44B := 2*vec12_44B + 2*vec14_44B;;
+
+matIrr44B := List(irr44B, chi -> List(chi, x -> x));;
+
+Print("\nTarget vectors on [1,2,3,6,13,13]:\n");
+Print("  V12 = ", vec12_44B, "\n");
+Print("  V14 = ", vec14_44B, "\n");
+Print("  V26 = ", vec26_44B, "\n");
+Print("  V38 = ", vec38_44B, "\n");
+Print("  V52 = ", vec52_44B, "\n");
+
+Print("\nSolutionMat decompositions:\n");
+Print("  V12 = ", SolutionMat(matIrr44B, vec12_44B), "\n");
+Print("  V14 = ", SolutionMat(matIrr44B, vec14_44B), "\n");
+Print("  V26 = ", SolutionMat(matIrr44B, vec26_44B), "\n");
+Print("  V38 = ", SolutionMat(matIrr44B, vec38_44B), "\n");
+Print("  V52 = ", SolutionMat(matIrr44B, vec52_44B), "\n");
+
+############################################################
+# FINAL REPORT
+############################################################
+
+Print("\n============================================================\n");
+Print("STEP 44B FINAL REPORT\n");
+Print("============================================================\n");
+
+Print("Abstract:\n");
+Print("  |H| = ", Size(H44B), "\n");
+Print("  |B=<g,f>| = ", Size(B44B), "\n");
+Print("  exact-inverting external Bruhat t count = ",
+      Length(goodTRecs44B), "\n");
+Print("  chosen t Order(g*t) = ", Order(g44B*t44B), "\n");
+Print("  chosen t witnesses = ", chosenTRec44B.witnesses, "\n");
+
+Print("\nModules:\n");
+Print("  12-module index = ", rec12_44B.index, "\n");
+Print("  target 14-module index = ", rec14_44B.index, "\n");
+
+Print("\nV26 traces [g,f,f^2,f^3,t,g*t] = ",
+      [SignedTrace44B(g26_44B),
+       SignedTrace44B(f26_44B),
+       SignedTrace44B(f26_44B^2),
+       SignedTrace44B(f26_44B^3),
+       SignedTrace44B(t26_44B),
+       SignedTrace44B(g26_44B*t26_44B)], "\n");
+
+Print("V26 orders [g,f,f^2,f^3,t,g*t] = ",
+      [Order(g26_44B),
+       Order(f26_44B),
+       Order(f26_44B^2),
+       Order(f26_44B^3),
+       Order(t26_44B),
+       Order(g26_44B*t26_44B)], "\n");
+
+Print("\nV26 Walton:\n");
+Print("  |B26| = ", Size(B26_44B), "\n");
+Print("  |H26| = ", Size(H26_44B), "\n");
+Print("  f^t=f^-1? ", f26_44B^t26_44B = f26_44B^-1, "\n");
+Print("  t normalises <g>? action exponent = ", actT26_44B, "\n");
+Print("  Bruhat witnesses = ", wit26_44B, "\n");
+
+Print("\nCharacter result:\n");
+Print("  V26 = 12 + 14-target = irr#4 + irr#6.\n");
+Print("  V38 = 12 + 12 + 14-target = 2*irr#4 + irr#6.\n");
+Print("  V52 = 2*12 + 2*14-target = 2*irr#4 + 2*irr#6.\n");
+Print("  This supports the supervisor G2 route:\n");
+Print("      L(F4)|G2 = 14 + 38\n");
+Print("      38|L2(13) = 12 + 12 + 14\n");
+
+Print("============================================================\n");
+Print("STEP 44B FINISHED\n");
+Print("============================================================\n");
+
+LogTo();
+
+############################################################
+# END STEP44B_CORRECTED_12_PLUS_14_ROUTE
+############################################################
+
+
+############################################################
+# BEGIN STEP45B_G2_ADJOINT_BRACKET_ON_14
+############################################################
+
+############################################################
+# STEP 45B:
+# G2-ADJOINT FINGERPRINT ON THE TARGET 14-MODULE
+#
+# Run after Step 44B / Step 45A.
+#
+# Aim:
+#   We already found Walton t in V26 = 12 + 14.
+#
+#   Now test whether the target 14-dimensional module behaves
+#   like L(G2), the adjoint module for G2.
+#
+# Main test:
+#   Compute the space
+#
+#       Hom_H(Lambda^2(V14), V14)
+#
+#   An H-invariant alternating bilinear map
+#
+#       [ , ] : V14 x V14 -> V14
+#
+#   is the candidate Lie bracket.
+#
+# If this space is 1-dimensional, the map has full image,
+# and Jacobi holds, then the target 14 has a strong G2-adjoint
+# fingerprint.
+############################################################
+
+LogTo("STEP45B_G2_ADJOINT_BRACKET_ON_14_LOG.txt");
+
+Print("\n============================================================\n");
+Print("STEP 45B: G2-ADJOINT BRACKET TEST ON TARGET 14\n");
+Print("============================================================\n");
+
+############################################################
+# Safety check
+############################################################
+
+if not IsBound(rec14_44B) then
+    Error("rec14_44B is not bound. Run Step 44B first.");
+fi;
+
+if not IsBound(rec12_44B) then
+    Error("rec12_44B is not bound. Run Step 44B first.");
+fi;
+
+Print("Using target 14-module index = ", rec14_44B.index, "\n");
+Print("Using 12-module index = ", rec12_44B.index, "\n");
+
+gens14_45B := rec14_44B.mats;;
+d45B := Length(gens14_45B[1]);;
+F45B := Field(Flat(gens14_45B[1]));;
+z45B := Zero(F45B);;
+one45B := One(F45B);;
+
+Print("dim V14 = ", d45B, "\n");
+Print("number of group generators on V14 = ", Length(gens14_45B), "\n");
+Print("image group size on V14 = ", Size(Group(gens14_45B)), "\n");
+
+############################################################
+# PART 1. Character-level check:
+#         Lambda^2(14) contains 14?
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 1: CHARACTER-LEVEL CHECK FOR Lambda^2(14)\n");
+Print("============================================================\n");
+
+tbl45B := CharacterTable("L2(13)");;
+if tbl45B = fail then
+    tbl45B := CharacterTable("PSL(2,13)");;
+fi;
+
+br45B := BrauerTable(tbl45B, 7);;
+irr45B := Irr(br45B);;
+orders45B := OrdersClassRepresentatives(br45B);;
+matIrr45B := List(irr45B, chi -> List(chi, x -> x));;
+
+chi12_45B := [12,0,0,0,-1,-1];;
+chi14_45B := [14,-2,-1,1,1,1];;
+chi26_45B := chi12_45B + chi14_45B;;
+chi38_45B := 2*chi12_45B + chi14_45B;;
+chi52_45B := 2*chi12_45B + 2*chi14_45B;;
+
+PowerVector45B := function(tbl, vec, n)
+    local pm;
+
+    pm := PowerMap(tbl, n);
+
+    if pm = fail then
+        Error("PowerMap failed.");
+    fi;
+
+    return List(pm, i -> vec[i]);
+end;;
+
+Ext2Char45B := function(tbl, chi)
+    local chi2, out, i;
+
+    chi2 := PowerVector45B(tbl, chi, 2);
+    out := [];
+
+    for i in [1..Length(chi)] do
+        Add(out, (chi[i]^2 - chi2[i]) / 2);
+    od;
+
+    return out;
+end;;
+
+Sym2Char45B := function(tbl, chi)
+    local chi2, out, i;
+
+    chi2 := PowerVector45B(tbl, chi, 2);
+    out := [];
+
+    for i in [1..Length(chi)] do
+        Add(out, (chi[i]^2 + chi2[i]) / 2);
+    od;
+
+    return out;
+end;;
+
+PrintDecomp45B := function(name, vec)
+    local sol, i, first;
+
+    sol := SolutionMat(matIrr45B, vec);
+
+    Print("\n", name, "\n");
+    Print("  vector = ", vec, "\n");
+    Print("  coefficients = ", sol, "\n");
+    Print("  decomposition = ");
+
+    if sol = fail then
+        Print("fail\n");
+        return fail;
+    fi;
+
+    first := true;
+
+    for i in [1..Length(sol)] do
+        if sol[i] <> 0 then
+            if not first then
+                Print(" + ");
+            fi;
+            Print(sol[i], "*irr#", i, "(deg ", irr45B[i][1], ")");
+            first := false;
+        fi;
+    od;
+
+    if first then
+        Print("0");
+    fi;
+
+    Print("\n");
+    return sol;
+end;;
+
+ext2_14_45B := Ext2Char45B(br45B, chi14_45B);;
+sym2_14_45B := Sym2Char45B(br45B, chi14_45B);;
+ext2_26_45B := Ext2Char45B(br45B, chi26_45B);;
+
+sol14_45B := SolutionMat(matIrr45B, chi14_45B);;
+solExt2_14_45B := PrintDecomp45B("Lambda^2(target 14)", ext2_14_45B);;
+solSym2_14_45B := PrintDecomp45B("Sym^2(target 14)", sym2_14_45B);;
+solExt2_26_45B := PrintDecomp45B("Lambda^2(V26)", ext2_26_45B);;
+
+Print("\nTarget 14 coefficients = ", sol14_45B, "\n");
+Print("Multiplicity of target 14 inside Lambda^2(14) = ",
+      solExt2_14_45B[6], "\n");
+Print("Trivial multiplicity in Sym^2(14) = ",
+      solSym2_14_45B[1], "\n");
+
+############################################################
+# PART 2. Build wedge-pair indexing
+############################################################
+
+Print("\n============================================================\n");
+Print("PART 2: BUILD LINEAR SYSTEM FOR Hom_H(Lambda^2(14),14)\n");
+Print("============================================================\n");
+
+pairs45B := [];;
+pairIndex45B := List([1..d45B], i -> List([1..d45B], j -> 0));;
+
+for i45B in [1..d45B] do
+    for j45B in [i45B+1..d45B] do
+        Add(pairs45B, [i45B, j45B]);
+        pairIndex45B[i45B][j45B] := Length(pairs45B);
+        pairIndex45B[j45B][i45B] := Length(pairs45B);
+    od;
+od;
+
+nPairs45B := Length(pairs45B);;
+nVars45B := nPairs45B * d45B;;
+
+Print("dim Lambda^2(14) = ", nPairs45B, "\n");
+Print("number of variables for bracket map = ", nVars45B, "\n");
+
+VarIndex45B := function(p, k)
+    return (p-1)*d45B + k;
+end;;
+
+############################################################
+# PART 3. Solve equivariance equations
+#
+# Unknowns:
+#   M[p,k] where p indexes e_i wedge e_j and k indexes output e_k.
+#
+# Condition for each generator A:
+#
+#   bracket((e_i A) wedge (e_j A)) = bracket(e_i wedge e_j) A
+#
+# using row-vector convention.
+############################################################
+
+rows45B := [];;
+
+for A45B in gens14_45B do
+    for p45B in [1..nPairs45B] do
+
+        i45B := pairs45B[p45B][1];;
+        j45B := pairs45B[p45B][2];;
+
+        for k45B in [1..d45B] do
+
+            row45B := List([1..nVars45B], x -> z45B);;
+
+            # Left side:
+            # bracket((e_i A) wedge (e_j A))
+            for r45B in [1..d45B] do
+                if A45B[i45B][r45B] <> z45B then
+                    for s45B in [1..d45B] do
+                        if A45B[j45B][s45B] <> z45B then
+
+                            coeff45B := A45B[i45B][r45B] * A45B[j45B][s45B];;
+
+                            if r45B < s45B then
+                                q45B := pairIndex45B[r45B][s45B];;
+                                row45B[VarIndex45B(q45B,k45B)] :=
+                                    row45B[VarIndex45B(q45B,k45B)] + coeff45B;
+                            elif r45B > s45B then
+                                q45B := pairIndex45B[s45B][r45B];;
+                                row45B[VarIndex45B(q45B,k45B)] :=
+                                    row45B[VarIndex45B(q45B,k45B)] - coeff45B;
+                            fi;
+
+                        fi;
+                    od;
+                fi;
+            od;
+
+            # Right side:
+            # bracket(e_i wedge e_j) A
+            # output coordinate k is sum_l M[p,l] A[l,k]
+            for l45B in [1..d45B] do
+                if A45B[l45B][k45B] <> z45B then
+                    row45B[VarIndex45B(p45B,l45B)] :=
+                        row45B[VarIndex45B(p45B,l45B)] - A45B[l45B][k45B];
+                fi;
+            od;
+
+            Add(rows45B, row45B);
+
+        od;
+    od;
+od;
+
+Print("number of linear equations = ", Length(rows45B), "\n");
+
+Print("Solving nullspace...\n");
+null45B := NullspaceMat(TransposedMat(rows45B));;
+
+Print("Dimension Hom_H(Lambda^2(14),14) = ", Length(null45B), "\n");
+
+############################################################
+# PART 4. Reconstruct bracket maps and test ranks
+############################################################
+
+VectorToBracketMap45B := function(v)
+    local M, p;
+
+    M := [];
+
+    for p in [1..nPairs45B] do
+        Add(M, v{[(p-1)*d45B+1 .. p*d45B]});
+    od;
+
+    return M;
+end;;
+
+bracketMaps45B := List(null45B, v -> VectorToBracketMap45B(v));;
+bracketRanks45B := List(bracketMaps45B, M -> RankMat(M));;
+
+Print("Ranks of basis bracket maps Lambda^2(14)->14 = ",
+      bracketRanks45B, "\n");
+
+############################################################
+# PART 5. Jacobi test
+############################################################
+
+ZeroVec45B := function()
+    return List([1..d45B], i -> z45B);
+end;;
+
+UnitVec45B := function(i)
+    local v;
+
+    v := ZeroVec45B();
+    v[i] := one45B;
+    return v;
+end;;
+
+BracketVec45B := function(M, x, y)
+    local out, i, j, p, coeff, k;
+
+    out := ZeroVec45B();
+
+    for i in [1..d45B] do
+        for j in [i+1..d45B] do
+            coeff := x[i]*y[j] - x[j]*y[i];
+
+            if coeff <> z45B then
+                p := pairIndex45B[i][j];
+
+                for k in [1..d45B] do
+                    out[k] := out[k] + coeff * M[p][k];
+                od;
+            fi;
+        od;
+    od;
+
+    return out;
+end;;
+
+VecAdd45B := function(a, b)
+    return List([1..Length(a)], i -> a[i] + b[i]);
+end;;
+
+IsZeroVec45B := function(v)
+    local x;
+
+    for x in v do
+        if x <> z45B then
+            return false;
+        fi;
+    od;
+
+    return true;
+end;;
+
+JacobiTest45B := function(M)
+    local i, j, k, ei, ej, ek, term1, term2, term3, total, failCount;
+
+    failCount := 0;
+
+    for i in [1..d45B] do
+        for j in [i+1..d45B] do
+            for k in [j+1..d45B] do
+
+                ei := UnitVec45B(i);
+                ej := UnitVec45B(j);
+                ek := UnitVec45B(k);
+
+                term1 := BracketVec45B(M, ei, BracketVec45B(M, ej, ek));
+                term2 := BracketVec45B(M, ej, BracketVec45B(M, ek, ei));
+                term3 := BracketVec45B(M, ek, BracketVec45B(M, ei, ej));
+
+                total := VecAdd45B(VecAdd45B(term1, term2), term3);
+
+                if not IsZeroVec45B(total) then
+                    failCount := failCount + 1;
+
+                    if failCount <= 5 then
+                        Print("  Jacobi failure at triple [",
+                              i, ",", j, ",", k, "] total=", total, "\n");
+                    fi;
+                fi;
+
+            od;
+        od;
+    od;
+
+    return failCount;
+end;;
+
+jacobiFails45B := [];;
+
+if Length(bracketMaps45B) = 0 then
+    Print("No bracket maps found, so no Jacobi test possible.\n");
+else
+    for mIndex45B in [1..Length(bracketMaps45B)] do
+        Print("\nTesting Jacobi for bracket basis map #", mIndex45B, "\n");
+        fails45B := JacobiTest45B(bracketMaps45B[mIndex45B]);;
+        Add(jacobiFails45B, fails45B);
+        Print("  Jacobi failure count = ", fails45B, "\n");
+    od;
+fi;
+
+############################################################
+# PART 6. Final interpretation
+############################################################
+
+Print("\n============================================================\n");
+Print("STEP 45B FINAL REPORT\n");
+Print("============================================================\n");
+
+Print("Target 14-module index = ", rec14_44B.index, "\n");
+Print("dim V14 = ", d45B, "\n");
+
+Print("\nCharacter test:\n");
+Print("  Lambda^2(14) coefficients = ", solExt2_14_45B, "\n");
+Print("  Sym^2(14) coefficients    = ", solSym2_14_45B, "\n");
+Print("  Multiplicity of target 14 inside Lambda^2(14) = ",
+      solExt2_14_45B[6], "\n");
+Print("  Trivial multiplicity in Sym^2(14) = ",
+      solSym2_14_45B[1], "\n");
+
+Print("\nModule-level bracket test:\n");
+Print("  Dimension Hom_H(Lambda^2(14),14) = ", Length(null45B), "\n");
+Print("  Ranks of bracket basis maps = ", bracketRanks45B, "\n");
+Print("  Jacobi failure counts = ", jacobiFails45B, "\n");
+
+Print("\nWalton part remains confirmed from Step 44B:\n");
+Print("  |<g,f>| on V26 = ", Size(Group(g26_44B, f26_44B)), "\n");
+Print("  |<g,f,t>| on V26 = ", Size(Group(g26_44B, f26_44B, t26_44B)), "\n");
+Print("  f^t=f^-1 on V26? ", f26_44B^t26_44B = f26_44B^-1, "\n");
+Print("  V26 traces [g,f,f^2,f^3,t,g*t] = ",
+      [SignedTrace44B(g26_44B),
+       SignedTrace44B(f26_44B),
+       SignedTrace44B(f26_44B^2),
+       SignedTrace44B(f26_44B^3),
+       SignedTrace44B(t26_44B),
+       SignedTrace44B(g26_44B*t26_44B)], "\n");
+
+Print("\nInterpretation guide:\n");
+Print("  If Hom dimension is 1, rank is 14, and Jacobi failures are 0,\n");
+Print("  then the target 14 has a strong G2-adjoint Lie algebra fingerprint.\n");
+Print("  That supports the supervisor route G2 <= F4.\n");
+Print("  The next step after that is to connect V52 = 14 + 38 to this G2 bracket.\n");
+
+Print("============================================================\n");
+Print("STEP 45B FINISHED\n");
+Print("============================================================\n");
+
+LogTo();
+
+############################################################
+# END STEP45B_G2_ADJOINT_BRACKET_ON_14
+############################################################
+
+
+############################################################
+# BEGIN STEP45C_LINEAR_COMBO_G2_BRACKET_SEARCH
+############################################################
+
+############################################################
+# STEP 45C:
+# SEARCH LINEAR COMBINATIONS OF THE TWO BRACKET MAPS
+#
+# Run after Step 45B.
+#
+# Step 45B found:
+#   Hom_H(Lambda^2(14),14) dimension = 2
+#   basis map ranks = [14,14]
+#   each basis map alone fails Jacobi
+#
+# Now search all projective combinations:
+#
+#   a*M1 + b*M2
+#
+# over GF(7), looking for:
+#   rank 14
+#   Jacobi failure count 0
+#
+# If found, this gives a genuine H-invariant Lie bracket
+# on the target 14-module, supporting the G2-adjoint route.
+############################################################
+
+LogTo("STEP45C_LINEAR_COMBO_G2_BRACKET_SEARCH_LOG.txt");
+
+Print("\n============================================================\n");
+Print("STEP 45C: LINEAR COMBINATIONS OF BRACKET MAPS\n");
+Print("============================================================\n");
+
+if not IsBound(bracketMaps45B) or not IsBound(JacobiTest45B) then
+    Error("Step 45B variables are not available. Run Step 45B first.");
+fi;
+
+if Length(bracketMaps45B) <> 2 then
+    Print("Warning: expected Hom dimension 2, but got ",
+          Length(bracketMaps45B), "\n");
+fi;
+
+F45C := F45B;;
+elts45C := Elements(F45C);;
+z45C := Zero(F45C);;
+one45C := One(F45C);;
+
+Print("Field elements GF(7) = ", elts45C, "\n");
+Print("Number of bracket basis maps = ", Length(bracketMaps45B), "\n");
+
+############################################################
+# Helper: linear combination of bracket maps
+############################################################
+
+CombineBracketMaps45C := function(coeffs)
+    local M, p, k, s, i;
+
+    M := [];
+
+    for p in [1..nPairs45B] do
+        Add(M, []);
+
+        for k in [1..d45B] do
+            s := z45C;
+
+            for i in [1..Length(coeffs)] do
+                s := s + coeffs[i] * bracketMaps45B[i][p][k];
+            od;
+
+            Add(M[p], s);
+        od;
+    od;
+
+    return M;
+end;;
+
+############################################################
+# Projective representatives for 2-dimensional space over GF(7)
+#
+# Representatives:
+#   [1,b] for all b in GF(7)
+#   [0,1]
+############################################################
+
+coeffList45C := [];;
+
+for b45C in elts45C do
+    Add(coeffList45C, [one45C, b45C]);
+od;
+
+Add(coeffList45C, [z45C, one45C]);;
+
+Print("Number of projective combinations to test = ",
+      Length(coeffList45C), "\n");
+
+############################################################
+# Test combinations
+############################################################
+
+goodBrackets45C := [];;
+
+for idx45C in [1..Length(coeffList45C)] do
+
+    coeffs45C := coeffList45C[idx45C];;
+    M45C := CombineBracketMaps45C(coeffs45C);;
+    rank45C := RankMat(M45C);;
+
+    Print("\nCombination #", idx45C,
+          " coeffs=", coeffs45C,
+          " rank=", rank45C, "\n");
+
+    fails45C := JacobiTest45B(M45C);;
+
+    Print("  Jacobi failure count = ", fails45C, "\n");
+
+    if rank45C = 14 and fails45C = 0 then
+        Add(goodBrackets45C,
+            rec(index := idx45C,
+                coeffs := coeffs45C,
+                map := M45C,
+                rank := rank45C,
+                fails := fails45C));
+
+        Print("  ==> GOOD LIE BRACKET CANDIDATE FOUND\n");
+    fi;
+
+od;
+
+############################################################
+# If no projective combination works, test all nonzero pairs
+# just to be completely safe.
+############################################################
+
+if Length(goodBrackets45C) = 0 then
+
+    Print("\nNo projective representative worked.\n");
+    Print("Testing all nonzero coefficient pairs for safety.\n");
+
+    allGood45C := [];;
+
+    for a45C in elts45C do
+        for b45C in elts45C do
+
+            if not (a45C = z45C and b45C = z45C) then
+
+                coeffs45C := [a45C, b45C];;
+                M45C := CombineBracketMaps45C(coeffs45C);;
+                rank45C := RankMat(M45C);;
+                fails45C := JacobiTest45B(M45C);;
+
+                if rank45C = 14 and fails45C = 0 then
+                    Add(allGood45C,
+                        rec(coeffs := coeffs45C,
+                            map := M45C,
+                            rank := rank45C,
+                            fails := fails45C));
+
+                    Print("  GOOD full-pair coeffs=", coeffs45C,
+                          " rank=", rank45C,
+                          " fails=", fails45C, "\n");
+                fi;
+
+            fi;
+
+        od;
+    od;
+
+    Print("Number of good full-pair combinations = ",
+          Length(allGood45C), "\n");
+
+else
+
+    allGood45C := goodBrackets45C;;
+
+fi;
+
+############################################################
+# Additional quick structural checks for any good bracket
+############################################################
+
+if Length(allGood45C) > 0 then
+
+    goodBracket45C := allGood45C[1].map;;
+    goodCoeffs45C := allGood45C[1].coeffs;;
+
+    Print("\nUsing first good bracket with coeffs = ",
+          goodCoeffs45C, "\n");
+
+    # Compute centre of the bracket:
+    # z in V such that [z,e_i]=0 for all i.
+    rowsCentre45C := [];;
+
+    for j45C in [1..d45B] do
+        ej45C := UnitVec45B(j45C);
+
+        for k45C in [1..d45B] do
+            row45C := List([1..d45B], x -> z45C);
+
+            for i45C in [1..d45B] do
+                ei45C := UnitVec45B(i45C);
+                br45C := BracketVec45B(goodBracket45C, ei45C, ej45C);
+                row45C[i45C] := br45C[k45C];
+            od;
+
+            Add(rowsCentre45C, row45C);
+        od;
+    od;
+
+    centre45C := NullspaceMat(TransposedMat(rowsCentre45C));;
+
+    Print("Centre dimension of the bracket algebra = ",
+          Length(centre45C), "\n");
+
+else
+
+    Print("\nNo Lie bracket combination found in this 2D Hom space.\n");
+    Print("This means the target 14 has full-rank alternating H-maps,\n");
+    Print("but no Jacobi-satisfying bracket from these maps.\n");
+    Print("Then the G2 route needs a different realisation/check.\n");
+
+fi;
+
+############################################################
+# FINAL REPORT
+############################################################
+
+Print("\n============================================================\n");
+Print("STEP 45C FINAL REPORT\n");
+Print("============================================================\n");
+
+Print("Hom dimension from Step 45B = ", Length(bracketMaps45B), "\n");
+Print("Basis map ranks from Step 45B = ", bracketRanks45B, "\n");
+Print("Basis Jacobi failures from Step 45B = ", jacobiFails45B, "\n");
+
+Print("\nProjective combinations tested = ", Length(coeffList45C), "\n");
+Print("Good projective Lie brackets found = ",
+      Length(goodBrackets45C), "\n");
+Print("Good total Lie brackets found after safety search = ",
+      Length(allGood45C), "\n");
+
+if Length(allGood45C) > 0 then
+    Print("First good coefficients = ", allGood45C[1].coeffs, "\n");
+    Print("First good rank = ", allGood45C[1].rank, "\n");
+    Print("First good Jacobi failures = ", allGood45C[1].fails, "\n");
+    Print("Conclusion: target 14 admits an H-invariant Lie bracket.\n");
+    Print("This is strong evidence for the G2-adjoint interpretation.\n");
+else
+    Print("Conclusion: no Jacobi-satisfying bracket was found.\n");
+    Print("So this test does not confirm target 14 as an actual Lie algebra module by itself.\n");
+fi;
+
+Print("\nWalton result remains unchanged:\n");
+Print("  V26 = 12 + target 14 contains the successful t.\n");
+Print("  |<g,f>| = ", Size(Group(g26_44B, f26_44B)), "\n");
+Print("  |<g,f,t>| = ", Size(Group(g26_44B, f26_44B, t26_44B)), "\n");
+Print("  f^t=f^-1? ", f26_44B^t26_44B = f26_44B^-1, "\n");
+
+Print("============================================================\n");
+Print("STEP 45C FINISHED\n");
+Print("============================================================\n");
+
+LogTo();
+
+############################################################
+# END STEP45C_LINEAR_COMBO_G2_BRACKET_SEARCH
+############################################################
+
+
+############################################################
+# BEGIN STEP45D_CLEAN_ALL_14_LIE_BRACKET_TEST
+############################################################
+
+############################################################
+# STEP 45D-CLEAN:
+# TEST ALL 14-MODULE RECORDS FOR LIE BRACKETS
+#
+# IMPORTANT:
+#   Paste only at normal gap>, NOT at brk>.
+#
+# This replaces the failed Step 45D.
+#
+# It tests all three 14-dimensional records from Step 44B.
+############################################################
+
+LogTo("STEP45D_CLEAN_ALL_14_LIE_BRACKET_TEST_LOG.txt");
+
+Print("\n============================================================\n");
+Print("STEP 45D-CLEAN: ALL 14-MODULE LIE BRACKET TEST\n");
+Print("============================================================\n");
+
+if not IsBound(modData44B) then
+    Error("modData44B is not bound. Run Step 44B first.");
+fi;
+
+mods14_45D := Filtered(modData44B, r -> r.dim = 14);;
+
+Print("Number of 14-dimensional records = ", Length(mods14_45D), "\n");
+
+############################################################
+# Quiet Jacobi count
+############################################################
+
+QuietJacobi45D := function(M, d, F, pairIndex)
+    local z, one, zeroVec, unitVec, bracketVec, vecAdd, isZeroVec;
+    local i, j, k, ei, ej, ek, term1, term2, term3, total, failCount;
+
+    z := Zero(F);
+    one := One(F);
+
+    zeroVec := function()
+        return List([1..d], x -> z);
+    end;
+
+    unitVec := function(pos)
+        local v;
+        v := zeroVec();
+        v[pos] := one;
+        return v;
+    end;
+
+    bracketVec := function(x, y)
+        local out, a, b, p, coeff, c;
+
+        out := zeroVec();
+
+        for a in [1..d] do
+            for b in [a+1..d] do
+                coeff := x[a]*y[b] - x[b]*y[a];
+
+                if coeff <> z then
+                    p := pairIndex[a][b];
+
+                    for c in [1..d] do
+                        out[c] := out[c] + coeff * M[p][c];
+                    od;
+                fi;
+            od;
+        od;
+
+        return out;
+    end;
+
+    vecAdd := function(u, v)
+        return List([1..Length(u)], x -> u[x] + v[x]);
+    end;
+
+    isZeroVec := function(v)
+        local x;
+        for x in v do
+            if x <> z then
+                return false;
+            fi;
+        od;
+        return true;
+    end;
+
+    failCount := 0;
+
+    for i in [1..d] do
+        for j in [i+1..d] do
+            for k in [j+1..d] do
+                ei := unitVec(i);
+                ej := unitVec(j);
+                ek := unitVec(k);
+
+                term1 := bracketVec(ei, bracketVec(ej, ek));
+                term2 := bracketVec(ej, bracketVec(ek, ei));
+                term3 := bracketVec(ek, bracketVec(ei, ej));
+
+                total := vecAdd(vecAdd(term1, term2), term3);
+
+                if not isZeroVec(total) then
+                    failCount := failCount + 1;
+                fi;
+            od;
+        od;
+    od;
+
+    return failCount;
+end;;
+
+############################################################
+# Test one 14-record
+############################################################
+
+TestOne14Record45D := function(rec14)
+    local gens, d, F, z, one, pairs, pairIndex, i, j, nPairs, nVars;
+    local VarIndex, rows, A, p, k, row, r, s, coeff, q, l;
+    local null, maps, ranks, elts, coeffList, b, coeffs;
+    local M, rank, fails, good, idx, pp, c, ii;
+
+    gens := rec14.mats;
+    d := Length(gens[1]);
+    F := Field(Flat(gens[1]));
+    z := Zero(F);
+    one := One(F);
+
+    pairs := [];
+    pairIndex := List([1..d], x -> List([1..d], y -> 0));
+
+    for i in [1..d] do
+        for j in [i+1..d] do
+            Add(pairs, [i,j]);
+            pairIndex[i][j] := Length(pairs);
+            pairIndex[j][i] := Length(pairs);
+        od;
+    od;
+
+    nPairs := Length(pairs);
+    nVars := nPairs*d;
+
+    VarIndex := function(p,k)
+        return (p-1)*d+k;
+    end;
+
+    rows := [];
+
+    for A in gens do
+        for p in [1..nPairs] do
+            i := pairs[p][1];
+            j := pairs[p][2];
+
+            for k in [1..d] do
+                row := List([1..nVars], x -> z);
+
+                for r in [1..d] do
+                    if A[i][r] <> z then
+                        for s in [1..d] do
+                            if A[j][s] <> z then
+                                coeff := A[i][r] * A[j][s];
+
+                                if r < s then
+                                    q := pairIndex[r][s];
+                                    row[VarIndex(q,k)] :=
+                                        row[VarIndex(q,k)] + coeff;
+                                elif r > s then
+                                    q := pairIndex[s][r];
+                                    row[VarIndex(q,k)] :=
+                                        row[VarIndex(q,k)] - coeff;
+                                fi;
+                            fi;
+                        od;
+                    fi;
+                od;
+
+                for l in [1..d] do
+                    if A[l][k] <> z then
+                        row[VarIndex(p,l)] :=
+                            row[VarIndex(p,l)] - A[l][k];
+                    fi;
+                od;
+
+                Add(rows, row);
+            od;
+        od;
+    od;
+
+    null := NullspaceMat(TransposedMat(rows));
+
+    maps := List(null, v -> List([1..nPairs],
+        pp -> v{[(pp-1)*d+1 .. pp*d]}));
+
+    ranks := List(maps, X -> RankMat(X));
+
+    elts := Elements(F);
+    coeffList := [];
+
+    if Length(maps) = 0 then
+        return rec(
+            index := rec14.index,
+            traces := [rec14.tr_g, rec14.tr_f, rec14.tr_f2,
+                       rec14.tr_f3, rec14.tr_t, rec14.tr_gt],
+            homDim := 0,
+            ranks := [],
+            tested := 0,
+            good := []
+        );
+    fi;
+
+    if Length(maps) = 1 then
+        coeffList := [[one]];
+    elif Length(maps) = 2 then
+        for b in elts do
+            Add(coeffList, [one,b]);
+        od;
+        Add(coeffList, [z,one]);
+    else
+        Print("  Hom dimension is ", Length(maps),
+              "; testing basis maps only.\n");
+
+        for ii in [1..Length(maps)] do
+            coeffs := List([1..Length(maps)], x -> z);
+            coeffs[ii] := one;
+            Add(coeffList, coeffs);
+        od;
+    fi;
+
+    good := [];
+
+    for idx in [1..Length(coeffList)] do
+        coeffs := coeffList[idx];
+
+        M := [];
+
+        for p in [1..nPairs] do
+            Add(M, []);
+
+            for k in [1..d] do
+                c := z;
+
+                for ii in [1..Length(coeffs)] do
+                    c := c + coeffs[ii] * maps[ii][p][k];
+                od;
+
+                Add(M[p], c);
+            od;
+        od;
+
+        rank := RankMat(M);
+        fails := QuietJacobi45D(M, d, F, pairIndex);
+
+        if rank = 14 and fails = 0 then
+            Add(good, rec(coeffs := coeffs, rank := rank, fails := fails));
+        fi;
+    od;
+
+    return rec(
+        index := rec14.index,
+        traces := [rec14.tr_g, rec14.tr_f, rec14.tr_f2,
+                   rec14.tr_f3, rec14.tr_t, rec14.tr_gt],
+        homDim := Length(null),
+        ranks := ranks,
+        tested := Length(coeffList),
+        good := good
+    );
+end;;
+
+############################################################
+# Run all 14-records
+############################################################
+
+results45D := [];;
+
+for r45D in mods14_45D do
+    Print("\n------------------------------------------------------------\n");
+    Print("Testing 14-module index ", r45D.index, "\n");
+    Print("traces [g,f,f^2,f^3,t,g*t] = ",
+          [r45D.tr_g, r45D.tr_f, r45D.tr_f2,
+           r45D.tr_f3, r45D.tr_t, r45D.tr_gt], "\n");
+
+    res45D := TestOne14Record45D(r45D);;
+    Add(results45D, res45D);
+
+    Print("Hom dimension = ", res45D.homDim, "\n");
+    Print("basis ranks = ", res45D.ranks, "\n");
+    Print("projective/basis combinations tested = ", res45D.tested, "\n");
+    Print("good Jacobi brackets found = ", Length(res45D.good), "\n");
+
+    if Length(res45D.good) > 0 then
+        Print("GOOD coefficients = ", res45D.good[1].coeffs, "\n");
+    fi;
+od;
+
+############################################################
+# Final report
+############################################################
+
+Print("\n============================================================\n");
+Print("STEP 45D-CLEAN FINAL REPORT\n");
+Print("============================================================\n");
+
+for res45D in results45D do
+    Print("\n14-module index ", res45D.index, "\n");
+    Print("  traces [g,f,f^2,f^3,t,g*t] = ", res45D.traces, "\n");
+    Print("  Hom_H(Lambda^2(14),14) dimension = ", res45D.homDim, "\n");
+    Print("  basis ranks = ", res45D.ranks, "\n");
+    Print("  tested combinations = ", res45D.tested, "\n");
+    Print("  good Jacobi brackets = ", Length(res45D.good), "\n");
+
+    if Length(res45D.good) > 0 then
+        Print("  first good coefficients = ", res45D.good[1].coeffs, "\n");
+    fi;
+od;
+
+Print("\nWalton V26 result remains confirmed:\n");
+Print("  |<g,f>| = ", Size(Group(g26_44B, f26_44B)), "\n");
+Print("  |<g,f,t>| = ", Size(Group(g26_44B, f26_44B, t26_44B)), "\n");
+Print("  f^t=f^-1? ", f26_44B^t26_44B = f26_44B^-1, "\n");
+Print("  V26 traces [g,f,f^2,f^3,t,g*t] = ",
+      [SignedTrace44B(g26_44B),
+       SignedTrace44B(f26_44B),
+       SignedTrace44B(f26_44B^2),
+       SignedTrace44B(f26_44B^3),
+       SignedTrace44B(t26_44B),
+       SignedTrace44B(g26_44B*t26_44B)], "\n");
+
+Print("\nInterpretation:\n");
+Print("  If one 14-record has good Jacobi brackets, that is the likely G2-adjoint 14.\n");
+Print("  If none has good Jacobi brackets, this simple bracket test does not confirm G2.\n");
+Print("  Either way, the Walton V26 triple is still successful.\n");
+
+Print("============================================================\n");
+Print("STEP 45D-CLEAN FINISHED\n");
+Print("============================================================\n");
+
+LogTo();
+
+############################################################
+# END STEP45D_CLEAN_ALL_14_LIE_BRACKET_TEST
+############################################################

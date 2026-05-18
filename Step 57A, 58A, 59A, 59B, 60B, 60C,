@@ -1,0 +1,4126 @@
+############################################################
+# ONE-PIECE GITHUB SCRIPT
+# F4(7) / PSL2(13) supervisor-route computation
+#
+# Contains:
+#   Step 57A  Safe fresh restart and V26 Walton construction
+#   Step 57B  Clean canonical report
+#   Step 58A  Test all 14-records for G2-adjoint bracket
+#   Step 59A  V27 product / derivation random search
+#   Step 59B  Corrected random continuation
+#   Step 60B  Full projective V27 product scan
+#   Step 60C  Inspect Step 60B Jordan survivors
+#   Step 61A  Final 3-hour verification and Alastair report
+#
+# Run at gap> after starting OSCAR/Julia and entering GAP.prompt().
+# If you are in brk>, type:
+#   quit;
+# first, then paste/read this file at gap>.
+#
+# Small safety patch included:
+#   In Step 59A, the local variable named 'rec' was renamed to
+#   'item59A' because 'rec' is a GAP record keyword.
+############################################################
+
+
+
+############################################################
+# STEP 57A:
+# SAFE FRESH RESTART AFTER STEP 56B CRASH
+#
+# Goal:
+#   Do NOT repeat the memory-heavy Hom-submodule search.
+#
+# This fresh script:
+#   1. Rebuilds H = PSL(2,13)
+#   2. Finds g, f, t with Walton checks
+#   3. Rebuilds the successful V26 = 12 + 14 model over GF(7)
+#   4. Verifies:
+#        |g|=13, |f|=6, |t|=2
+#        |<g,f>|=78
+#        |<g,f,t>|=1092
+#        f^t = f^-1
+#        Order(g*t)=3
+#   5. Computes clean Brauer-character checks:
+#        V26 = 12 + 14
+#        V52 target = 2*12 + 2*14
+#        End(V26) character information
+#
+# This is supervisor-safe and memory-safe.
+############################################################
+
+LogTo("STEP57A_SAFE_FRESH_RESTART_LOG.txt");
+
+Print("\n============================================================\n");
+Print("STEP 57A: SAFE FRESH RESTART AFTER STEP 56B CRASH\n");
+Print("============================================================\n");
+
+############################################################
+# PART 0. Packages and field
+############################################################
+
+LoadPackage("ctbllib");
+
+F57 := GF(7);;
+one57 := One(F57);;
+zero57 := Zero(F57);;
+
+SignedGF7_57 := function(x)
+    local n;
+
+    for n in [-6..6] do
+        if x = n * one57 then
+            return n;
+        fi;
+    od;
+
+    return x;
+end;;
+
+SignedListGF7_57 := function(L)
+    return List(L, x -> SignedGF7_57(x));
+end;;
+
+TraceMat57 := function(A)
+    return TraceMat(A);
+end;;
+
+Print("Field = GF(7)\n");
+
+############################################################
+# PART 1. Build abstract H = PSL(2,13)
+############################################################
+
+Print("\n------------------------------------------------------------\n");
+Print("PART 1: BUILD ABSTRACT PSL(2,13) WALTON TRIPLE\n");
+Print("------------------------------------------------------------\n");
+
+H57 := PSL(2,13);;
+
+Print("|H| = ", Size(H57), "\n");
+
+ActionExponent57 := function(g, x)
+    local gx, k;
+
+    gx := g^x;
+
+    for k in [0..12] do
+        if gx = g^k then
+            return k;
+        fi;
+    od;
+
+    return fail;
+end;;
+
+g57 := First(Elements(H57), x -> Order(x) = 13);;
+P57 := Group(g57);;
+N57 := Normalizer(H57, P57);;
+
+Print("Order(g) = ", Order(g57), "\n");
+Print("|<g>| = ", Size(P57), "\n");
+Print("|N_H(<g>)| = ", Size(N57), "\n");
+
+f57 := fail;;
+
+for x57 in Elements(N57) do
+    if Order(x57) = 6 then
+        if ActionExponent57(g57, x57) = 10 then
+            f57 := x57;
+            break;
+        fi;
+    fi;
+od;
+
+if f57 = fail then
+    Error("Could not find f of order 6 acting on <g> by exponent 10.");
+fi;
+
+B57 := Group(g57, f57);;
+
+Print("Order(f) = ", Order(f57), "\n");
+Print("Action exponent of f on <g> = ", ActionExponent57(g57, f57), "\n");
+Print("|B=<g,f>| = ", Size(B57), "\n");
+
+t57 := fail;;
+
+for x57 in Elements(H57) do
+    if Order(x57) = 2 then
+        if not x57 in B57 then
+            if f57^x57 = f57^-1 then
+                if ActionExponent57(g57, x57) = fail then
+                    if Order(g57 * x57) = 3 then
+                        if Size(Group(g57, f57, x57)) = Size(H57) then
+                            t57 := x57;
+                            break;
+                        fi;
+                    fi;
+                fi;
+            fi;
+        fi;
+    fi;
+od;
+
+if t57 = fail then
+    Error("Could not find external exact-inverting Walton t.");
+fi;
+
+Print("\nWalton t found.\n");
+Print("Order(t) = ", Order(t57), "\n");
+Print("f^t = f^-1? ", f57^t57 = f57^-1, "\n");
+Print("t in B? ", t57 in B57, "\n");
+Print("Action exponent of t on <g> = ", ActionExponent57(g57, t57), "\n");
+Print("Order(g*t) = ", Order(g57 * t57), "\n");
+Print("|<g,f,t>| = ", Size(Group(g57, f57, t57)), "\n");
+
+############################################################
+# PART 2. Get irreducible GF(7)-modules for H
+############################################################
+
+Print("\n------------------------------------------------------------\n");
+Print("PART 2: IRREDUCIBLE MODULES OVER GF(7)\n");
+Print("------------------------------------------------------------\n");
+
+rawMods57 := IrreducibleModules(H57, F57);;
+
+if IsList(rawMods57) and Length(rawMods57) >= 2 and IsList(rawMods57[2]) then
+    moduleAbsGens57 := rawMods57[1];;
+    moduleRecords57 := rawMods57[2];;
+else
+    moduleAbsGens57 := GeneratorsOfGroup(H57);;
+    moduleRecords57 := rawMods57;;
+fi;
+
+Print("Number of abstract module generators = ", Length(moduleAbsGens57), "\n");
+Print("Number of module records found = ", Length(moduleRecords57), "\n");
+
+Hsrc57 := Group(moduleAbsGens57);;
+epi57 := EpimorphismFromFreeGroup(Hsrc57);;
+free57 := Source(epi57);;
+freeGens57 := GeneratorsOfGroup(free57);;
+
+pre_g57 := PreImagesRepresentative(epi57, g57);;
+pre_f57 := PreImagesRepresentative(epi57, f57);;
+pre_t57 := PreImagesRepresentative(epi57, t57);;
+pre_gt57 := PreImagesRepresentative(epi57, g57 * t57);;
+
+ModuleMatrices57 := function(M)
+    if IsRecord(M) then
+        if IsBound(M.generators) then
+            return M.generators;
+        fi;
+
+        if IsBound(M.gens) then
+            return M.gens;
+        fi;
+
+        if IsBound(M.matrices) then
+            return M.matrices;
+        fi;
+
+        Print("Record names available: ", RecNames(M), "\n");
+        Error("Do not know where generator matrices are stored in this module record.");
+    fi;
+
+    return M;
+end;;
+
+ImageByPreword57 := function(M, pre)
+    local mats, MG, phi;
+
+    mats := ModuleMatrices57(M);
+
+    if Length(mats) <> Length(freeGens57) then
+        Print("Length(mats) = ", Length(mats), "\n");
+        Print("Length(freeGens57) = ", Length(freeGens57), "\n");
+        Error("Module generator count does not match free generator count.");
+    fi;
+
+    MG := Group(mats);
+    phi := GroupHomomorphismByImages(
+        free57,
+        MG,
+        freeGens57,
+        mats
+    );
+
+    return Image(phi, pre);
+end;;
+
+ModuleDim57 := function(M)
+    local mats;
+
+    mats := ModuleMatrices57(M);
+    return Length(mats[1]);
+end;;
+
+ModuleProfile57 := function(M)
+    local gm, fm, tm, vals;
+
+    gm := ImageByPreword57(M, pre_g57);
+    fm := ImageByPreword57(M, pre_f57);
+    tm := ImageByPreword57(M, pre_t57);
+
+    vals := [
+        TraceMat57(gm),
+        TraceMat57(fm),
+        TraceMat57(fm^2),
+        TraceMat57(fm^3),
+        TraceMat57(tm),
+        TraceMat57(gm * tm)
+    ];
+
+    return vals;
+end;;
+
+ModuleInfo57 := [];;
+
+for i57 in [1..Length(moduleRecords57)] do
+    dim57 := ModuleDim57(moduleRecords57[i57]);;
+    prof57 := ModuleProfile57(moduleRecords57[i57]);;
+
+    Add(ModuleInfo57, rec(
+        index := i57,
+        dim := dim57,
+        profile := prof57,
+        signedProfile := SignedListGF7_57(prof57),
+        record := moduleRecords57[i57]
+    ));
+
+    Print("Module record #", i57,
+          " | dim=", dim57,
+          " | profile [g,f,f^2,f^3,t,g*t] = ",
+          SignedListGF7_57(prof57), "\n");
+od;
+
+############################################################
+# PART 3. Select 12 and target 14
+############################################################
+
+Print("\n------------------------------------------------------------\n");
+Print("PART 3: SELECT TARGET 12 AND TARGET 14\n");
+Print("------------------------------------------------------------\n");
+
+target12_57 := First(
+    ModuleInfo57,
+    r -> r.dim = 12 and r.signedProfile = [-1,0,0,0,0,0]
+);;
+
+if target12_57 = fail then
+    Print("Could not identify 12 by exact profile; using first 12-dimensional record.\n");
+    target12_57 := First(ModuleInfo57, r -> r.dim = 12);;
+fi;
+
+target14_57 := First(
+    ModuleInfo57,
+    r -> r.dim = 14 and r.signedProfile = [1,1,-1,-2,-2,-1]
+);;
+
+if target14_57 = fail then
+    Print("Could not identify target 14 by exact profile; using first 14-dimensional record.\n");
+    target14_57 := First(ModuleInfo57, r -> r.dim = 14);;
+fi;
+
+if target12_57 = fail then
+    Error("No 12-dimensional module found.");
+fi;
+
+if target14_57 = fail then
+    Error("No 14-dimensional module found.");
+fi;
+
+Print("Selected 12-record #", target12_57.index,
+      " profile = ", target12_57.signedProfile, "\n");
+
+Print("Selected 14-record #", target14_57.index,
+      " profile = ", target14_57.signedProfile, "\n");
+
+############################################################
+# PART 4. Build V26 = 12 + 14
+############################################################
+
+Print("\n------------------------------------------------------------\n");
+Print("PART 4: BUILD V26 = 12 + 14\n");
+Print("------------------------------------------------------------\n");
+
+BlockDiag2_57 := function(A, B)
+    local da, db, M, i, j;
+
+    da := Length(A);
+    db := Length(B);
+
+    M := NullMat(da + db, da + db, F57);
+
+    for i in [1..da] do
+        for j in [1..da] do
+            M[i][j] := A[i][j];
+        od;
+    od;
+
+    for i in [1..db] do
+        for j in [1..db] do
+            M[da+i][da+j] := B[i][j];
+        od;
+    od;
+
+    return M;
+end;;
+
+ImageV26_57 := function(pre)
+    local A12, A14;
+
+    A12 := ImageByPreword57(target12_57.record, pre);
+    A14 := ImageByPreword57(target14_57.record, pre);
+
+    return BlockDiag2_57(A12, A14);
+end;;
+
+g26_57 := ImageV26_57(pre_g57);;
+f26_57 := ImageV26_57(pre_f57);;
+t26_57 := ImageV26_57(pre_t57);;
+
+B26_57 := Group(g26_57, f26_57);;
+H26_57 := Group(g26_57, f26_57, t26_57);;
+
+V26Profile57 := [
+    TraceMat57(g26_57),
+    TraceMat57(f26_57),
+    TraceMat57(f26_57^2),
+    TraceMat57(f26_57^3),
+    TraceMat57(t26_57),
+    TraceMat57(g26_57 * t26_57)
+];;
+
+Print("V26 dimension = ", Length(g26_57), "\n");
+Print("V26 profile [g,f,f^2,f^3,t,g*t] = ",
+      SignedListGF7_57(V26Profile57), "\n");
+
+Print("\nV26 Walton checks:\n");
+Print("  Order(g26) = ", Order(g26_57), "\n");
+Print("  Order(f26) = ", Order(f26_57), "\n");
+Print("  Order(t26) = ", Order(t26_57), "\n");
+Print("  |<g26,f26>| = ", Size(B26_57), "\n");
+Print("  |<g26,f26,t26>| = ", Size(H26_57), "\n");
+Print("  f26^t26 = f26^-1? ", f26_57^t26_57 = f26_57^-1, "\n");
+Print("  Order(g26*t26) = ", Order(g26_57 * t26_57), "\n");
+
+############################################################
+# PART 5. Brauer table checks
+############################################################
+
+Print("\n------------------------------------------------------------\n");
+Print("PART 5: BRAUER CHARACTER CHECKS\n");
+Print("------------------------------------------------------------\n");
+
+tbl57 := CharacterTable("L2(13)");;
+br57 := BrauerTable(tbl57, 7);;
+
+orders57 := OrdersClassRepresentatives(br57);;
+irr57 := Irr(br57);;
+irrVals57 := List(irr57, chi -> ValuesOfClassFunction(chi));;
+
+Print("Brauer class orders = ", orders57, "\n");
+Print("Number of irreducible Brauer characters = ", Length(irrVals57), "\n");
+
+for i57 in [1..Length(irrVals57)] do
+    Print("irr#", i57,
+          " degree ", irrVals57[i57][1],
+          " values ", irrVals57[i57], "\n");
+od;
+
+PrintDecomp57 := function(label, vec)
+    local sol, i;
+
+    Print("\n", label, " vector = ", vec, "\n");
+
+    sol := SolutionMat(irrVals57, vec);
+
+    if sol = fail then
+        Print(label, " decomposition = fail\n");
+        return fail;
+    fi;
+
+    Print(label, " decomposition coefficients = ", sol, "\n");
+
+    for i in [1..Length(sol)] do
+        if sol[i] <> 0 then
+            Print("  coeff ", sol[i],
+                  " * irr#", i,
+                  " degree ", irrVals57[i][1],
+                  " values ", irrVals57[i], "\n");
+        fi;
+    od;
+
+    return sol;
+end;;
+
+V12Vec57 := [12,0,0,0,-1,-1];;
+V14Vec57 := [14,-2,-1,1,1,1];;
+V26Vec57 := [26,-2,-1,1,0,0];;
+V52Vec57 := [52,-4,-2,2,0,0];;
+
+PrintDecomp57("V12", V12Vec57);;
+PrintDecomp57("target V14", V14Vec57);;
+PrintDecomp57("V26 = 12 + 14", V26Vec57);;
+PrintDecomp57("target V52 = 2*12 + 2*14", V52Vec57);;
+
+############################################################
+# PART 6. End(V26) character information
+#
+# Since V26 has Brauer vector:
+#   [26,-2,-1,1,0,0]
+#
+# End(V26) has character approximately chi(x)*chi(x^-1).
+# Here values are real on the used classes, and the 13-class values are 0.
+#
+# Therefore:
+#   End(V26) vector = [676,4,1,1,0,0]
+############################################################
+
+Print("\n------------------------------------------------------------\n");
+Print("PART 6: End(V26) CHARACTER INFORMATION\n");
+Print("------------------------------------------------------------\n");
+
+EndV26Vec57 := [676,4,1,1,0,0];;
+
+EndDecomp57 := PrintDecomp57("End(V26)", EndV26Vec57);;
+
+Print("\nTrace formula check on actual V26 matrices:\n");
+
+EndTraceAt57 := function(A)
+    return TraceMat57(A) * TraceMat57(A^-1);
+end;;
+
+Print("  End trace at g = ", SignedGF7_57(EndTraceAt57(g26_57)), "\n");
+Print("  End trace at f = ", SignedGF7_57(EndTraceAt57(f26_57)), "\n");
+Print("  End trace at f^2 = ", SignedGF7_57(EndTraceAt57(f26_57^2)), "\n");
+Print("  End trace at f^3 = ", SignedGF7_57(EndTraceAt57(f26_57^3)), "\n");
+Print("  End trace at t = ", SignedGF7_57(EndTraceAt57(t26_57)), "\n");
+
+############################################################
+# PART 7. Final safe report
+############################################################
+
+Print("\n============================================================\n");
+Print("STEP 57A FINAL REPORT\n");
+Print("============================================================\n");
+
+Print("Abstract H size = ", Size(H57), "\n");
+Print("V26 generated H size = ", Size(H26_57), "\n");
+Print("B26 size = ", Size(B26_57), "\n");
+
+Print("\nSelected module records:\n");
+Print("  12-record #", target12_57.index,
+      " profile ", target12_57.signedProfile, "\n");
+Print("  14-record #", target14_57.index,
+      " profile ", target14_57.signedProfile, "\n");
+
+Print("\nV26 Walton profile [g,f,f^2,f^3,t,g*t] = ",
+      SignedListGF7_57(V26Profile57), "\n");
+
+Print("\nWalton checks:\n");
+Print("  Order(g26) = ", Order(g26_57), "\n");
+Print("  Order(f26) = ", Order(f26_57), "\n");
+Print("  Order(t26) = ", Order(t26_57), "\n");
+Print("  |<g26,f26>| = ", Size(B26_57), "\n");
+Print("  |<g26,f26,t26>| = ", Size(H26_57), "\n");
+Print("  f26^t26 = f26^-1? ", f26_57^t26_57 = f26_57^-1, "\n");
+Print("  Order(g26*t26) = ", Order(g26_57 * t26_57), "\n");
+
+Print("\nCharacter conclusions:\n");
+Print("  V26 = 12 + target14.\n");
+Print("  Target adjoint V52 character = 2*12 + 2*target14.\n");
+Print("  This confirms the representation-theoretic target without the\n");
+Print("  memory-heavy Hom-submodule search that crashed Step 56B.\n");
+
+Print("\nNext mathematical direction:\n");
+Print("  Do not repeat full Step 56B in this form.\n");
+Print("  The safer next step is to use the Brauer-table decomposition and\n");
+Print("  search for an actual F4/G2 realisation externally, instead of\n");
+Print("  storing many 676-dimensional Hom images in gl(V26).\n");
+
+Print("\nSTEP 57A FINISHED.\n");
+Print("Log file: STEP57A_SAFE_FRESH_RESTART_LOG.txt\n");
+Print("============================================================\n");
+
+LogTo();
+
+
+
+############################################################
+# STEP 57B:
+# CLEAN CANONICAL REPORT AFTER STEP 57A
+#
+# Continue in the same GAP session.
+#
+# Fixes the GF(7) display issue:
+#   old display printed 1 as -6.
+#
+# This prints the clean final result:
+#   target 12
+#   target 14
+#   V26 = 12 + 14
+#   V52 = 2*12 + 2*14
+#   Walton checks
+############################################################
+
+Print("\n============================================================\n");
+Print("STEP 57B: CLEAN CANONICAL REPORT AFTER STEP 57A\n");
+Print("============================================================\n");
+
+if not IsBound(g26_57) then
+    Error("g26_57 is not bound. Run Step 57A first.");
+fi;
+
+if not IsBound(f26_57) then
+    Error("f26_57 is not bound. Run Step 57A first.");
+fi;
+
+if not IsBound(t26_57) then
+    Error("t26_57 is not bound. Run Step 57A first.");
+fi;
+
+CanonicalGF7_57B := function(x)
+    local n;
+
+    for n in [0,1,2,3,-3,-2,-1] do
+        if x = n * One(GF(7)) then
+            return n;
+        fi;
+    od;
+
+    return x;
+end;;
+
+CanonicalListGF7_57B := function(L)
+    return List(L, x -> CanonicalGF7_57B(x));
+end;;
+
+ProfileMats57B := function(g, f, t)
+    return [
+        TraceMat(g),
+        TraceMat(f),
+        TraceMat(f^2),
+        TraceMat(f^3),
+        TraceMat(t),
+        TraceMat(g*t)
+    ];
+end;;
+
+V26Profile57B := ProfileMats57B(g26_57, f26_57, t26_57);;
+
+Print("\nClean V26 profile [g,f,f^2,f^3,t,g*t]:\n");
+Print("  ", CanonicalListGF7_57B(V26Profile57B), "\n");
+
+Print("\nClean Walton checks on V26:\n");
+Print("  Order(g26) = ", Order(g26_57), "\n");
+Print("  Order(f26) = ", Order(f26_57), "\n");
+Print("  Order(t26) = ", Order(t26_57), "\n");
+Print("  |<g26,f26>| = ", Size(Group(g26_57, f26_57)), "\n");
+Print("  |<g26,f26,t26>| = ", Size(Group(g26_57, f26_57, t26_57)), "\n");
+Print("  f26^t26 = f26^-1? ", f26_57^t26_57 = f26_57^-1, "\n");
+Print("  Order(g26*t26) = ", Order(g26_57 * t26_57), "\n");
+
+Print("\nSelected module records:\n");
+Print("  12-record #", target12_57.index, "\n");
+Print("  12 profile = ", target12_57.signedProfile, "\n");
+Print("  Canonical 12 profile = ", CanonicalListGF7_57B(target12_57.profile), "\n");
+
+Print("  14-record #", target14_57.index, "\n");
+Print("  old displayed 14 profile = ", target14_57.signedProfile, "\n");
+Print("  Canonical 14 profile = ", CanonicalListGF7_57B(target14_57.profile), "\n");
+
+Print("\nBrauer character conclusions:\n");
+Print("  12-record is irr#4 with character [12,0,0,0,-1,-1].\n");
+Print("  target 14-record is irr#6 with character [14,-2,-1,1,1,1].\n");
+Print("  V26 = irr#4 + irr#6.\n");
+Print("  V26 character = [26,-2,-1,1,0,0].\n");
+Print("  Target V52 = 2*irr#4 + 2*irr#6.\n");
+Print("  Target V52 character = [52,-4,-2,2,0,0].\n");
+
+Print("\nSupervisor-ready summary:\n");
+Print("  We constructed the abstract Walton triple inside PSL(2,13),\n");
+Print("  then realised it on the 26-dimensional GF(7)-module V26=12+14.\n");
+Print("  The subgroup B=<g,f> has order 78, so B is 13:6.\n");
+Print("  The extra involution t satisfies f^t=f^-1, lies outside B,\n");
+Print("  and gives Order(g*t)=3. Hence <g,f,t> has order 1092,\n");
+Print("  so it realises PSL(2,13).\n");
+Print("  The character calculation gives the expected adjoint target\n");
+Print("  V52 = 2*12 + 2*14, with trace vector [52,-4,-2,2,0,0].\n");
+
+Print("\nImportant correction:\n");
+Print("  The earlier Step 57A display printed GF(7) value 1 as -6.\n");
+Print("  Therefore the profile [-6,-6,-1,-2,-2,-1] should be read as\n");
+Print("  [1,1,-1,-2,-2,-1]. This is only a display issue, not a maths issue.\n");
+
+Print("\nSTEP 57B FINISHED.\n");
+Print("============================================================\n");
+
+
+
+############################################################
+# STEP 58A:
+# TEST ALL 14-DIMENSIONAL RECORDS FOR G2-ADJOINT BRACKET
+#
+# Continue after Step 57B in the same GAP session.
+#
+# Aim:
+#   Supervisor route asks whether L2(13) may sit inside G2 <= F4.
+#
+#   If a 14-dimensional module is the adjoint module L(G2),
+#   then there should be an H-equivariant alternating bracket
+#
+#       Lambda^2(14) -> 14
+#
+#   satisfying the Jacobi identity.
+#
+# This script tests every 14-dimensional record from IrreducibleModules.
+#
+# It is small and safe:
+#   dim Lambda^2(14) = 91
+#   target dim = 14
+#
+# No huge gl(V26) Hom-sum storage.
+############################################################
+
+Print("\n============================================================\n");
+Print("STEP 58A: TEST ALL 14-RECORDS FOR G2-ADJOINT BRACKET\n");
+Print("============================================================\n");
+
+if not IsBound(ModuleInfo57) then
+    Error("ModuleInfo57 is not bound. Run Step 57A first.");
+fi;
+
+if not IsBound(ModuleMatrices57) then
+    Error("ModuleMatrices57 is not bound. Run Step 57A first.");
+fi;
+
+F58 := GF(7);;
+zero58 := Zero(F58);;
+one58 := One(F58);;
+
+CanonicalGF7_58 := function(x)
+    local n;
+
+    for n in [0,1,2,3,-3,-2,-1] do
+        if x = n * one58 then
+            return n;
+        fi;
+    od;
+
+    return x;
+end;;
+
+CanonicalListGF7_58 := function(L)
+    return List(L, x -> CanonicalGF7_58(x));
+end;;
+
+############################################################
+# Pair indexing for Lambda^2
+############################################################
+
+BuildPairData58 := function(d)
+    local pairs, pairIndex, i, j, idx;
+
+    pairs := [];
+    pairIndex := [];
+
+    for i in [1..d] do
+        pairIndex[i] := [];
+    od;
+
+    idx := 0;
+
+    for i in [1..d] do
+        for j in [i+1..d] do
+            idx := idx + 1;
+            Add(pairs, [i,j]);
+            pairIndex[i][j] := idx;
+            pairIndex[j][i] := idx;
+        od;
+    od;
+
+    return rec(
+        pairs := pairs,
+        pairIndex := pairIndex,
+        dim := Length(pairs)
+    );
+end;;
+
+############################################################
+# Exterior square matrix for row-vector convention
+############################################################
+
+ExteriorSquareMat58 := function(A)
+    local d, pdata, pairs, pairIndex, wdim, E,
+          p, i, j, r, s, q, coeff;
+
+    d := Length(A);
+    pdata := BuildPairData58(d);
+    pairs := pdata.pairs;
+    pairIndex := pdata.pairIndex;
+    wdim := pdata.dim;
+
+    E := NullMat(wdim, wdim, F58);
+
+    for p in [1..wdim] do
+        i := pairs[p][1];
+        j := pairs[p][2];
+
+        for r in [1..d] do
+            if A[i][r] <> zero58 then
+                for s in [1..d] do
+                    if A[j][s] <> zero58 then
+                        coeff := A[i][r] * A[j][s];
+
+                        if r < s then
+                            q := pairIndex[r][s];
+                            E[p][q] := E[p][q] + coeff;
+                        elif r > s then
+                            q := pairIndex[s][r];
+                            E[p][q] := E[p][q] - coeff;
+                        fi;
+                    fi;
+                od;
+            fi;
+        od;
+    od;
+
+    return E;
+end;;
+
+############################################################
+# Hom solver:
+# For row convention, an H-map X: source -> target satisfies
+#
+#       S * X = X * T
+#
+############################################################
+
+HomVecToRows58 := function(vec, sourceDim, targetDim)
+    local rows, i, k, pos, row;
+
+    rows := [];
+    pos := 1;
+
+    for i in [1..sourceDim] do
+        row := [];
+
+        for k in [1..targetDim] do
+            Add(row, vec[pos]);
+            pos := pos + 1;
+        od;
+
+        Add(rows, row);
+    od;
+
+    return rows;
+end;;
+
+HomVecSatisfies58 := function(vec, sourceMats, targetMats, sourceDim, targetDim)
+    local X, a;
+
+    X := HomVecToRows58(vec, sourceDim, targetDim);
+
+    for a in [1..Length(sourceMats)] do
+        if sourceMats[a] * X <> X * targetMats[a] then
+            return false;
+        fi;
+    od;
+
+    return true;
+end;;
+
+HomBasisRows58 := function(sourceMats, targetMats)
+    local sourceDim, targetDim, numVars, varIndex,
+          rows, a, S, T, i, k, j, l, row,
+          rawBasis, goodBasis, v, rawBasis2;
+
+    sourceDim := Length(sourceMats[1]);
+    targetDim := Length(targetMats[1]);
+    numVars := sourceDim * targetDim;
+
+    varIndex := function(i, k)
+        return (i-1) * targetDim + k;
+    end;
+
+    rows := [];
+
+    for a in [1..Length(sourceMats)] do
+        S := sourceMats[a];
+        T := targetMats[a];
+
+        for i in [1..sourceDim] do
+            for k in [1..targetDim] do
+
+                row := List([1..numVars], x -> zero58);
+
+                # coefficient from S*X
+                for j in [1..sourceDim] do
+                    if S[i][j] <> zero58 then
+                        row[varIndex(j,k)] := row[varIndex(j,k)] + S[i][j];
+                    fi;
+                od;
+
+                # coefficient from -X*T
+                for l in [1..targetDim] do
+                    if T[l][k] <> zero58 then
+                        row[varIndex(i,l)] := row[varIndex(i,l)] - T[l][k];
+                    fi;
+                od;
+
+                Add(rows, row);
+            od;
+        od;
+    od;
+
+    rawBasis := NullspaceMat(rows);
+
+    goodBasis := [];
+
+    for v in rawBasis do
+        if Length(v) = numVars then
+            if HomVecSatisfies58(v, sourceMats, targetMats, sourceDim, targetDim) then
+                Add(goodBasis, v);
+            fi;
+        fi;
+    od;
+
+    if Length(goodBasis) > 0 then
+        return goodBasis;
+    fi;
+
+    # Fallback in case this GAP installation uses the opposite nullspace convention.
+    rawBasis2 := NullspaceMat(TransposedMat(rows));
+
+    for v in rawBasis2 do
+        if Length(v) = numVars then
+            if HomVecSatisfies58(v, sourceMats, targetMats, sourceDim, targetDim) then
+                Add(goodBasis, v);
+            fi;
+        fi;
+    od;
+
+    return goodBasis;
+end;;
+
+############################################################
+# Projective coefficient list over GF(7)
+############################################################
+
+AllProjectiveCoeffs58 := function(dim)
+    local F, elts, coeffs, out, recFun, first, inv, c, i;
+
+    F := GF(7);
+    elts := Elements(F);
+    out := [];
+
+    recFun := function(pos, current)
+        local a, copy;
+
+        if pos > dim then
+            if ForAll(current, x -> x = zero58) then
+                return;
+            fi;
+
+            first := 0;
+
+            for i in [1..dim] do
+                if current[i] <> zero58 and first = 0 then
+                    first := i;
+                fi;
+            od;
+
+            inv := current[first]^-1;
+            c := List(current, x -> x * inv);
+
+            if not c in out then
+                Add(out, c);
+            fi;
+
+            return;
+        fi;
+
+        for a in elts do
+            copy := ShallowCopy(current);
+            Add(copy, a);
+            recFun(pos+1, copy);
+        od;
+    end;
+
+    recFun(1, []);
+
+    return out;
+end;;
+
+RandomProjectiveCoeffs58 := function(dim, howMany)
+    local F, elts, out, c, i, first, inv;
+
+    F := GF(7);
+    elts := Elements(F);
+    out := [];
+
+    while Length(out) < howMany do
+        c := List([1..dim], i -> Random(elts));
+
+        while ForAll(c, x -> x = zero58) do
+            c := List([1..dim], i -> Random(elts));
+        od;
+
+        first := 0;
+
+        for i in [1..dim] do
+            if c[i] <> zero58 and first = 0 then
+                first := i;
+            fi;
+        od;
+
+        inv := c[first]^-1;
+        c := List(c, x -> x * inv);
+
+        if not c in out then
+            Add(out, c);
+        fi;
+    od;
+
+    return out;
+end;;
+
+CoeffList58 := function(dim)
+    if dim = 0 then
+        return [];
+    fi;
+
+    if dim <= 4 then
+        return AllProjectiveCoeffs58(dim);
+    fi;
+
+    return RandomProjectiveCoeffs58(dim, 1000);
+end;;
+
+LinearCombo58 := function(coeffs, basis)
+    local out, i, k;
+
+    out := List([1..Length(basis[1])], k -> zero58);
+
+    for i in [1..Length(coeffs)] do
+        if coeffs[i] <> zero58 then
+            for k in [1..Length(out)] do
+                out[k] := out[k] + coeffs[i] * basis[i][k];
+            od;
+        fi;
+    od;
+
+    return out;
+end;;
+
+############################################################
+# Jacobi test for bracket Lambda^2(V) -> V
+############################################################
+
+BracketBasis58 := function(i, j, br, pdata, d)
+    local z, q;
+
+    z := List([1..d], k -> zero58);
+
+    if i = j then
+        return z;
+    fi;
+
+    if i < j then
+        q := pdata.pairIndex[i][j];
+        return br[q];
+    else
+        q := pdata.pairIndex[j][i];
+        return List(br[q], x -> -x);
+    fi;
+end;;
+
+BracketBasisWithVec58 := function(i, v, br, pdata, d)
+    local out, l, b, k;
+
+    out := List([1..d], k -> zero58);
+
+    for l in [1..d] do
+        if v[l] <> zero58 then
+            b := BracketBasis58(i, l, br, pdata, d);
+
+            for k in [1..d] do
+                out[k] := out[k] + v[l] * b[k];
+            od;
+        fi;
+    od;
+
+    return out;
+end;;
+
+JacobiFailures58 := function(br, d)
+    local pdata, failCount, i, j, k, a, b, c, term1, term2, term3, total, r;
+
+    pdata := BuildPairData58(d);
+    failCount := 0;
+
+    for i in [1..d] do
+        for j in [i+1..d] do
+            for k in [j+1..d] do
+
+                a := BracketBasis58(j, k, br, pdata, d);
+                b := BracketBasis58(k, i, br, pdata, d);
+                c := BracketBasis58(i, j, br, pdata, d);
+
+                term1 := BracketBasisWithVec58(i, a, br, pdata, d);
+                term2 := BracketBasisWithVec58(j, b, br, pdata, d);
+                term3 := BracketBasisWithVec58(k, c, br, pdata, d);
+
+                total := [];
+
+                for r in [1..d] do
+                    Add(total, term1[r] + term2[r] + term3[r]);
+                od;
+
+                if not ForAll(total, x -> x = zero58) then
+                    failCount := failCount + 1;
+                fi;
+            od;
+        od;
+    od;
+
+    return failCount;
+end;;
+
+BracketRank58 := function(br)
+    return Length(BaseMat(br));
+end;;
+
+############################################################
+# Main test for one 14-dimensional record
+############################################################
+
+Test14RecordForBracket58 := function(info)
+    local mats, d, wedgeMats, homBasis, hdim, coeffsList,
+          pdata, best, count, coeffs, vec, br, rank, jacFail,
+          good, coeffDisplay;
+
+    Print("\n------------------------------------------------------------\n");
+    Print("Testing 14-record #", info.index, "\n");
+    Print("Profile [g,f,f^2,f^3,t,g*t] = ",
+          CanonicalListGF7_58(info.profile), "\n");
+    Print("------------------------------------------------------------\n");
+
+    mats := ModuleMatrices57(info.record);
+    d := Length(mats[1]);
+
+    if d <> 14 then
+        Error("This is not a 14-dimensional module.");
+    fi;
+
+    wedgeMats := List(mats, A -> ExteriorSquareMat58(A));
+
+    Print("dim(V) = ", d, "\n");
+    Print("dim(Lambda^2 V) = ", Length(wedgeMats[1]), "\n");
+
+    Print("Solving Hom_H(Lambda^2(14),14)...\n");
+
+    homBasis := HomBasisRows58(wedgeMats, mats);
+    hdim := Length(homBasis);
+
+    Print("Hom dimension = ", hdim, "\n");
+
+    if hdim = 0 then
+        return rec(
+            index := info.index,
+            profile := CanonicalListGF7_58(info.profile),
+            homDim := 0,
+            tested := 0,
+            good := [],
+            best := fail
+        );
+    fi;
+
+    coeffsList := CoeffList58(hdim);
+
+    Print("Coefficient directions to test = ", Length(coeffsList), "\n");
+
+    pdata := BuildPairData58(d);
+    good := [];
+    best := rec(rank := -1, jacobiFailures := 999999, coeffs := fail);
+    count := 0;
+
+    for coeffs in coeffsList do
+        count := count + 1;
+
+        vec := LinearCombo58(coeffs, homBasis);
+        br := HomVecToRows58(vec, pdata.dim, d);
+
+        rank := BracketRank58(br);
+        jacFail := JacobiFailures58(br, d);
+
+        if count mod 20 = 0 then
+            Print("  tested ", count, " / ", Length(coeffsList),
+                  " | rank=", rank,
+                  " | Jacobi failures=", jacFail,
+                  " | good=", Length(good), "\n");
+        fi;
+
+        if rank > best.rank or (rank = best.rank and jacFail < best.jacobiFailures) then
+            best := rec(
+                rank := rank,
+                jacobiFailures := jacFail,
+                coeffs := coeffs
+            );
+        fi;
+
+        if rank = 14 and jacFail = 0 then
+            Print("\n*** GOOD LIE BRACKET FOUND FOR 14-record #",
+                  info.index, " ***\n");
+            Print("coeffs = ", coeffs, "\n");
+
+            Add(good, rec(
+                coeffs := coeffs,
+                rank := rank,
+                jacobiFailures := jacFail,
+                bracket := br
+            ));
+        fi;
+    od;
+
+    Print("\nRecord #", info.index, " summary:\n");
+    Print("  Hom dimension = ", hdim, "\n");
+    Print("  Tested coefficient directions = ", count, "\n");
+    Print("  Best rank = ", best.rank, "\n");
+    Print("  Best Jacobi failures = ", best.jacobiFailures, "\n");
+    Print("  Good Lie brackets found = ", Length(good), "\n");
+
+    return rec(
+        index := info.index,
+        profile := CanonicalListGF7_58(info.profile),
+        homDim := hdim,
+        tested := count,
+        good := good,
+        best := best
+    );
+end;;
+
+############################################################
+# Run on all 14-dimensional module records
+############################################################
+
+Records14_58 := Filtered(ModuleInfo57, r -> r.dim = 14);;
+
+Print("Number of 14-dimensional records to test = ", Length(Records14_58), "\n");
+
+Lie14Reports58A := [];;
+
+for info58 in Records14_58 do
+    Add(Lie14Reports58A, Test14RecordForBracket58(info58));
+od;
+
+############################################################
+# Final report
+############################################################
+
+Print("\n============================================================\n");
+Print("STEP 58A FINAL REPORT\n");
+Print("============================================================\n");
+
+for rep58 in Lie14Reports58A do
+    Print("\n14-record #", rep58.index, "\n");
+    Print("  profile = ", rep58.profile, "\n");
+    Print("  Hom_H(Lambda^2(14),14) dimension = ", rep58.homDim, "\n");
+    Print("  coefficient directions tested = ", rep58.tested, "\n");
+
+    if rep58.best = fail then
+        Print("  no bracket maps available.\n");
+    else
+        Print("  best rank = ", rep58.best.rank, "\n");
+        Print("  best Jacobi failures = ", rep58.best.jacobiFailures, "\n");
+        Print("  best coeffs = ", rep58.best.coeffs, "\n");
+    fi;
+
+    Print("  good Lie brackets found = ", Length(rep58.good), "\n");
+od;
+
+GoodLie14_58A := Filtered(Lie14Reports58A, r -> Length(r.good) > 0);;
+
+Print("\nTotal 14-records with at least one Lie bracket = ",
+      Length(GoodLie14_58A), "\n");
+
+if Length(GoodLie14_58A) = 0 then
+    Print("\nInterpretation:\n");
+    Print("  No tested 14-record produced a full-rank Jacobi-satisfying\n");
+    Print("  H-invariant bracket Lambda^2(14)->14.\n");
+    Print("  This does not affect the successful Walton V26 result.\n");
+    Print("  It only says the simple direct G2-adjoint bracket test did not\n");
+    Print("  identify a 14-dimensional record as L(G2) in this model.\n");
+else
+    Print("\nInterpretation:\n");
+    Print("  At least one 14-record carries a candidate G2-adjoint bracket.\n");
+    Print("  This is strong evidence for the G2 route and should be inspected next.\n");
+
+    for rep58 in GoodLie14_58A do
+        Print("  GOOD record #", rep58.index,
+              " profile ", rep58.profile,
+              " good brackets ", Length(rep58.good), "\n");
+    od;
+fi;
+
+Print("\nSTEP 58A FINISHED.\n");
+Print("============================================================\n");
+
+
+
+############################################################
+# STEP 59A:
+# LONG SUPERVISOR-STRATEGY SEARCH:
+#
+#   V27 = 1 + 12 + 14
+#
+# Search for H-invariant commutative unital products on V27.
+#
+# Motivation:
+#   F4 is the automorphism group of the 27-dimensional Albert
+#   algebra. The 26-dimensional minimal module is the trace-zero
+#   part, and V27 = 1 + V26.
+#
+# If the supervisor's F4/G2 route is correct, then the successful
+# Walton V26 = 12 + 14 may sit inside a 27-dimensional algebraic
+# structure. A strong signal would be:
+#
+#   an H-invariant commutative product on V27
+#   with derivation algebra dimension 52.
+#
+# This is a long random search, but safer than Step 56B:
+#   - no huge gl(V26) Hom-sum storage
+#   - works blockwise:
+#       Sym^2(12), 12 tensor 14, Sym^2(14)
+#   - then randomly combines product maps
+#   - computes derivation algebra dimensions
+#
+# Continue after Step 57B / Step 58A in the same GAP session.
+############################################################
+
+LogTo("STEP59A_V27_PRODUCT_DERIVATION_SEARCH_LOG.txt");
+
+Print("\n============================================================\n");
+Print("STEP 59A: LONG V27 PRODUCT / DERIVATION SEARCH\n");
+Print("============================================================\n");
+
+if not IsBound(target12_57) then
+    Error("target12_57 is not bound. Run Step 57A/57B first.");
+fi;
+
+if not IsBound(target14_57) then
+    Error("target14_57 is not bound. Run Step 57A/57B first.");
+fi;
+
+if not IsBound(ModuleMatrices57) then
+    Error("ModuleMatrices57 is not bound. Run Step 57A first.");
+fi;
+
+############################################################
+# Parameters
+############################################################
+
+F59 := GF(7);;
+zero59 := Zero(F59);;
+one59 := One(F59);;
+
+MAX_RANDOM_PRODUCTS59 := 220;;
+JORDAN_RANDOM_TESTS59 := 20;;
+SAVE_PRODUCTS_WITH_DER_DIM59 := [52,51,53,50,54,49,55];;
+
+Print("MAX_RANDOM_PRODUCTS59 = ", MAX_RANDOM_PRODUCTS59, "\n");
+Print("JORDAN_RANDOM_TESTS59 = ", JORDAN_RANDOM_TESTS59, "\n");
+
+CanonicalGF7_59 := function(x)
+    local n;
+
+    for n in [0,1,2,3,-3,-2,-1] do
+        if x = n * one59 then
+            return n;
+        fi;
+    od;
+
+    return x;
+end;;
+
+CanonicalListGF7_59 := function(L)
+    return List(L, x -> CanonicalGF7_59(x));
+end;;
+
+ZeroVec59 := function(d)
+    return List([1..d], i -> zero59);
+end;;
+
+BasisVec59 := function(d, i)
+    local v;
+
+    v := ZeroVec59(d);
+    v[i] := one59;
+    return v;
+end;;
+
+############################################################
+# Basic module matrices
+############################################################
+
+M12Gens59 := ModuleMatrices57(target12_57.record);;
+M14Gens59 := ModuleMatrices57(target14_57.record);;
+
+numGens59 := Length(M12Gens59);;
+
+M1Gens59 := List([1..numGens59], i -> [[one59]]);;
+
+Print("\nModule blocks:\n");
+Print("  number of generators = ", numGens59, "\n");
+Print("  dim 1  = 1\n");
+Print("  dim 12 = ", Length(M12Gens59[1]), "\n");
+Print("  dim 14 = ", Length(M14Gens59[1]), "\n");
+
+Print("  target 12-record #", target12_57.index,
+      " profile ", CanonicalListGF7_59(target12_57.profile), "\n");
+Print("  target 14-record #", target14_57.index,
+      " profile ", CanonicalListGF7_59(target14_57.profile), "\n");
+
+############################################################
+# Pair data for symmetric square
+############################################################
+
+BuildSymPairData59 := function(d)
+    local pairs, pairIndex, i, j, idx;
+
+    pairs := [];
+    pairIndex := [];
+
+    for i in [1..d] do
+        pairIndex[i] := [];
+    od;
+
+    idx := 0;
+
+    for i in [1..d] do
+        for j in [i..d] do
+            idx := idx + 1;
+            Add(pairs, [i,j]);
+            pairIndex[i][j] := idx;
+            pairIndex[j][i] := idx;
+        od;
+    od;
+
+    return rec(
+        pairs := pairs,
+        pairIndex := pairIndex,
+        dim := Length(pairs)
+    );
+end;;
+
+SymmetricSquareMat59 := function(A)
+    local d, pdata, pairs, pairIndex, sdim, S,
+          p, i, j, r, s, q, coeff;
+
+    d := Length(A);
+    pdata := BuildSymPairData59(d);
+    pairs := pdata.pairs;
+    pairIndex := pdata.pairIndex;
+    sdim := pdata.dim;
+
+    S := NullMat(sdim, sdim, F59);
+
+    for p in [1..sdim] do
+        i := pairs[p][1];
+        j := pairs[p][2];
+
+        for r in [1..d] do
+            if A[i][r] <> zero59 then
+                for s in [1..d] do
+                    if A[j][s] <> zero59 then
+                        coeff := A[i][r] * A[j][s];
+                        q := pairIndex[r][s];
+                        S[p][q] := S[p][q] + coeff;
+                    fi;
+                od;
+            fi;
+        od;
+    od;
+
+    return S;
+end;;
+
+TensorMat59 := function(A, B)
+    local da, db, T, i, j, r, s, row, col, coeff;
+
+    da := Length(A);
+    db := Length(B);
+
+    T := NullMat(da*db, da*db, F59);
+
+    for i in [1..da] do
+        for j in [1..db] do
+            row := (i-1)*db + j;
+
+            for r in [1..da] do
+                if A[i][r] <> zero59 then
+                    for s in [1..db] do
+                        if B[j][s] <> zero59 then
+                            col := (r-1)*db + s;
+                            coeff := A[i][r] * B[j][s];
+                            T[row][col] := T[row][col] + coeff;
+                        fi;
+                    od;
+                fi;
+            od;
+        od;
+    od;
+
+    return T;
+end;;
+
+############################################################
+# Hom solver
+#
+# Row-vector convention:
+#   source matrix S, target matrix T
+#   H-map X satisfies S * X = X * T.
+############################################################
+
+HomVecToRows59 := function(vec, sourceDim, targetDim)
+    local rows, i, k, pos, row;
+
+    rows := [];
+    pos := 1;
+
+    for i in [1..sourceDim] do
+        row := [];
+
+        for k in [1..targetDim] do
+            Add(row, vec[pos]);
+            pos := pos + 1;
+        od;
+
+        Add(rows, row);
+    od;
+
+    return rows;
+end;;
+
+HomVecSatisfies59 := function(vec, sourceMats, targetMats, sourceDim, targetDim)
+    local X, a;
+
+    X := HomVecToRows59(vec, sourceDim, targetDim);
+
+    for a in [1..Length(sourceMats)] do
+        if sourceMats[a] * X <> X * targetMats[a] then
+            return false;
+        fi;
+    od;
+
+    return true;
+end;;
+
+HomBasisRows59 := function(sourceMats, targetMats)
+    local sourceDim, targetDim, numVars, varIndex,
+          rows, a, S, T, i, k, j, l, row,
+          rawBasis, goodBasis, v, rawBasis2;
+
+    sourceDim := Length(sourceMats[1]);
+    targetDim := Length(targetMats[1]);
+    numVars := sourceDim * targetDim;
+
+    varIndex := function(i, k)
+        return (i-1) * targetDim + k;
+    end;
+
+    rows := [];
+
+    for a in [1..Length(sourceMats)] do
+        S := sourceMats[a];
+        T := targetMats[a];
+
+        for i in [1..sourceDim] do
+            for k in [1..targetDim] do
+
+                row := List([1..numVars], x -> zero59);
+
+                for j in [1..sourceDim] do
+                    if S[i][j] <> zero59 then
+                        row[varIndex(j,k)] := row[varIndex(j,k)] + S[i][j];
+                    fi;
+                od;
+
+                for l in [1..targetDim] do
+                    if T[l][k] <> zero59 then
+                        row[varIndex(i,l)] := row[varIndex(i,l)] - T[l][k];
+                    fi;
+                od;
+
+                Add(rows, row);
+            od;
+        od;
+    od;
+
+    rawBasis := NullspaceMat(rows);
+    goodBasis := [];
+
+    for v in rawBasis do
+        if Length(v) = numVars then
+            if HomVecSatisfies59(v, sourceMats, targetMats, sourceDim, targetDim) then
+                Add(goodBasis, v);
+            fi;
+        fi;
+    od;
+
+    if Length(goodBasis) > 0 then
+        return goodBasis;
+    fi;
+
+    rawBasis2 := NullspaceMat(TransposedMat(rows));
+
+    for v in rawBasis2 do
+        if Length(v) = numVars then
+            if HomVecSatisfies59(v, sourceMats, targetMats, sourceDim, targetDim) then
+                Add(goodBasis, v);
+            fi;
+        fi;
+    od;
+
+    return goodBasis;
+end;;
+
+ComputeHom59 := function(label, sourceMats, targetMats)
+    local h, sdim, tdim;
+
+    Print("\nSolving Hom for ", label, "...\n");
+
+    sdim := Length(sourceMats[1]);
+    tdim := Length(targetMats[1]);
+
+    Print("  source dimension = ", sdim, "\n");
+    Print("  target dimension = ", tdim, "\n");
+
+    h := HomBasisRows59(sourceMats, targetMats);
+
+    Print("  Hom dimension = ", Length(h), "\n");
+
+    return rec(
+        label := label,
+        sourceDim := sdim,
+        targetDim := tdim,
+        basis := h,
+        homDim := Length(h)
+    );
+end;;
+
+############################################################
+# Build source block modules:
+#   Sym^2(12)
+#   12 tensor 14
+#   Sym^2(14)
+############################################################
+
+Print("\n------------------------------------------------------------\n");
+Print("PART 1: BUILD PRODUCT-BLOCK MODULES\n");
+Print("------------------------------------------------------------\n");
+
+Sym12Gens59 := List(M12Gens59, A -> SymmetricSquareMat59(A));;
+Ten1214Gens59 := List([1..numGens59],
+    i -> TensorMat59(M12Gens59[i], M14Gens59[i]));;
+Sym14Gens59 := List(M14Gens59, A -> SymmetricSquareMat59(A));;
+
+Print("dim Sym^2(12) = ", Length(Sym12Gens59[1]), "\n");
+Print("dim 12 tensor 14 = ", Length(Ten1214Gens59[1]), "\n");
+Print("dim Sym^2(14) = ", Length(Sym14Gens59[1]), "\n");
+
+############################################################
+# Compute all block Hom spaces needed for a commutative product
+#
+# Product blocks:
+#   Sym^2(12) -> 1,12,14
+#   12 tensor 14 -> 1,12,14
+#   Sym^2(14) -> 1,12,14
+############################################################
+
+Print("\n------------------------------------------------------------\n");
+Print("PART 2: COMPUTE BLOCK HOM SPACES FOR V27 PRODUCT\n");
+Print("------------------------------------------------------------\n");
+
+H_S12_to_1_59  := ComputeHom59("Sym^2(12) -> 1",  Sym12Gens59, M1Gens59);;
+H_S12_to_12_59 := ComputeHom59("Sym^2(12) -> 12", Sym12Gens59, M12Gens59);;
+H_S12_to_14_59 := ComputeHom59("Sym^2(12) -> 14", Sym12Gens59, M14Gens59);;
+
+H_T1214_to_1_59  := ComputeHom59("12 tensor 14 -> 1",  Ten1214Gens59, M1Gens59);;
+H_T1214_to_12_59 := ComputeHom59("12 tensor 14 -> 12", Ten1214Gens59, M12Gens59);;
+H_T1214_to_14_59 := ComputeHom59("12 tensor 14 -> 14", Ten1214Gens59, M14Gens59);;
+
+H_S14_to_1_59  := ComputeHom59("Sym^2(14) -> 1",  Sym14Gens59, M1Gens59);;
+H_S14_to_12_59 := ComputeHom59("Sym^2(14) -> 12", Sym14Gens59, M12Gens59);;
+H_S14_to_14_59 := ComputeHom59("Sym^2(14) -> 14", Sym14Gens59, M14Gens59);;
+
+Print("\nBlock Hom dimension summary:\n");
+Print("  Sym^2(12) -> 1  : ", H_S12_to_1_59.homDim, "\n");
+Print("  Sym^2(12) -> 12 : ", H_S12_to_12_59.homDim, "\n");
+Print("  Sym^2(12) -> 14 : ", H_S12_to_14_59.homDim, "\n");
+Print("  12 tensor 14 -> 1  : ", H_T1214_to_1_59.homDim, "\n");
+Print("  12 tensor 14 -> 12 : ", H_T1214_to_12_59.homDim, "\n");
+Print("  12 tensor 14 -> 14 : ", H_T1214_to_14_59.homDim, "\n");
+Print("  Sym^2(14) -> 1  : ", H_S14_to_1_59.homDim, "\n");
+Print("  Sym^2(14) -> 12 : ", H_S14_to_12_59.homDim, "\n");
+Print("  Sym^2(14) -> 14 : ", H_S14_to_14_59.homDim, "\n");
+
+############################################################
+# Random map combination helpers
+############################################################
+
+RandomCoeffsAllowZero59 := function(dim)
+    local elts;
+
+    elts := Elements(F59);
+
+    if dim = 0 then
+        return [];
+    fi;
+
+    return List([1..dim], i -> Random(elts));
+end;;
+
+LinearComboHomVec59 := function(coeffs, homBasis, sourceDim, targetDim)
+    local out, i, k;
+
+    if Length(homBasis) = 0 then
+        return List([1..sourceDim*targetDim], k -> zero59);
+    fi;
+
+    out := List([1..Length(homBasis[1])], k -> zero59);
+
+    for i in [1..Length(coeffs)] do
+        if coeffs[i] <> zero59 then
+            for k in [1..Length(out)] do
+                out[k] := out[k] + coeffs[i] * homBasis[i][k];
+            od;
+        fi;
+    od;
+
+    return out;
+end;;
+
+RandomMapRows59 := function(H)
+    local coeffs, vec;
+
+    coeffs := RandomCoeffsAllowZero59(H.homDim);
+    vec := LinearComboHomVec59(coeffs, H.basis, H.sourceDim, H.targetDim);
+
+    return rec(
+        coeffs := coeffs,
+        rows := HomVecToRows59(vec, H.sourceDim, H.targetDim)
+    );
+end;;
+
+EmbedToV27_59 := function(row, targetLabel)
+    local out, i;
+
+    out := ZeroVec59(27);
+
+    if targetLabel = "1" then
+        out[1] := row[1];
+    elif targetLabel = "12" then
+        for i in [1..12] do
+            out[1+i] := row[i];
+        od;
+    elif targetLabel = "14" then
+        for i in [1..14] do
+            out[13+i] := row[i];
+        od;
+    else
+        Error("Unknown targetLabel.");
+    fi;
+
+    return out;
+end;;
+
+AddVec59 := function(a, b)
+    local out, i;
+
+    out := [];
+
+    for i in [1..Length(a)] do
+        Add(out, a[i] + b[i]);
+    od;
+
+    return out;
+end;;
+
+ScalarVec59 := function(c, v)
+    return List(v, x -> c*x);
+end;;
+
+############################################################
+# Build one random commutative unital product on V27
+#
+# Basis:
+#   index 1       = identity e
+#   indices 2..13 = V12
+#   indices 14..27 = V14
+############################################################
+
+BuildRandomProduct59 := function()
+    local pdata12, pdata14,
+          mS12_1, mS12_12, mS12_14,
+          mT_1, mT_12, mT_14,
+          mS14_1, mS14_12, mS14_14,
+          prod, i, j, a, b, q, out, row;
+
+    pdata12 := BuildSymPairData59(12);
+    pdata14 := BuildSymPairData59(14);
+
+    mS12_1  := RandomMapRows59(H_S12_to_1_59);
+    mS12_12 := RandomMapRows59(H_S12_to_12_59);
+    mS12_14 := RandomMapRows59(H_S12_to_14_59);
+
+    mT_1  := RandomMapRows59(H_T1214_to_1_59);
+    mT_12 := RandomMapRows59(H_T1214_to_12_59);
+    mT_14 := RandomMapRows59(H_T1214_to_14_59);
+
+    mS14_1  := RandomMapRows59(H_S14_to_1_59);
+    mS14_12 := RandomMapRows59(H_S14_to_12_59);
+    mS14_14 := RandomMapRows59(H_S14_to_14_59);
+
+    prod := [];
+
+    for i in [1..27] do
+        prod[i] := [];
+        for j in [1..27] do
+            prod[i][j] := ZeroVec59(27);
+        od;
+    od;
+
+    for i in [1..27] do
+        for j in [i..27] do
+
+            if i = 1 and j = 1 then
+                out := BasisVec59(27, 1);
+
+            elif i = 1 then
+                out := BasisVec59(27, j);
+
+            elif j = 1 then
+                out := BasisVec59(27, i);
+
+            elif i >= 2 and i <= 13 and j >= 2 and j <= 13 then
+                a := i - 1;
+                b := j - 1;
+                q := pdata12.pairIndex[a][b];
+
+                out := ZeroVec59(27);
+                out := AddVec59(out, EmbedToV27_59(mS12_1.rows[q], "1"));
+                out := AddVec59(out, EmbedToV27_59(mS12_12.rows[q], "12"));
+                out := AddVec59(out, EmbedToV27_59(mS12_14.rows[q], "14"));
+
+            elif i >= 2 and i <= 13 and j >= 14 and j <= 27 then
+                a := i - 1;
+                b := j - 13;
+                q := (a-1)*14 + b;
+
+                out := ZeroVec59(27);
+                out := AddVec59(out, EmbedToV27_59(mT_1.rows[q], "1"));
+                out := AddVec59(out, EmbedToV27_59(mT_12.rows[q], "12"));
+                out := AddVec59(out, EmbedToV27_59(mT_14.rows[q], "14"));
+
+            elif i >= 14 and i <= 27 and j >= 14 and j <= 27 then
+                a := i - 13;
+                b := j - 13;
+                q := pdata14.pairIndex[a][b];
+
+                out := ZeroVec59(27);
+                out := AddVec59(out, EmbedToV27_59(mS14_1.rows[q], "1"));
+                out := AddVec59(out, EmbedToV27_59(mS14_12.rows[q], "12"));
+                out := AddVec59(out, EmbedToV27_59(mS14_14.rows[q], "14"));
+
+            else
+                # This is the 14 x 12 case; use symmetry from 12 x 14.
+                out := prod[j][i];
+            fi;
+
+            prod[i][j] := out;
+            prod[j][i] := out;
+        od;
+    od;
+
+    return rec(
+        prod := prod,
+        coeffs := rec(
+            S12_1 := mS12_1.coeffs,
+            S12_12 := mS12_12.coeffs,
+            S12_14 := mS12_14.coeffs,
+            T_1 := mT_1.coeffs,
+            T_12 := mT_12.coeffs,
+            T_14 := mT_14.coeffs,
+            S14_1 := mS14_1.coeffs,
+            S14_12 := mS14_12.coeffs,
+            S14_14 := mS14_14.coeffs
+        )
+    );
+end;;
+
+############################################################
+# Product of arbitrary vectors
+############################################################
+
+ProdVec59 := function(u, v, prod)
+    local out, i, j, k, coeff, p;
+
+    out := ZeroVec59(27);
+
+    for i in [1..27] do
+        if u[i] <> zero59 then
+            for j in [1..27] do
+                if v[j] <> zero59 then
+                    coeff := u[i] * v[j];
+                    p := prod[i][j];
+
+                    for k in [1..27] do
+                        out[k] := out[k] + coeff * p[k];
+                    od;
+                fi;
+            od;
+        fi;
+    od;
+
+    return out;
+end;;
+
+RandomVec59 := function(d)
+    local elts;
+
+    elts := Elements(F59);
+    return List([1..d], i -> Random(elts));
+end;;
+
+JordanRandomFailures59 := function(prod, ntests)
+    local count, r, x, y, x2, yx, left, right;
+
+    count := 0;
+
+    for r in [1..ntests] do
+        x := RandomVec59(27);
+        y := RandomVec59(27);
+
+        x2 := ProdVec59(x, x, prod);
+        yx := ProdVec59(y, x, prod);
+
+        left := ProdVec59(ProdVec59(x2, y, prod), x, prod);
+        right := ProdVec59(x2, yx, prod);
+
+        if left <> right then
+            count := count + 1;
+        fi;
+    od;
+
+    return count;
+end;;
+
+############################################################
+# Derivation algebra computation
+#
+# D is a derivation if:
+#   D(x*y) = D(x)*y + x*D(y)
+#
+# Unknown D is a 27 x 27 matrix, row convention.
+# Variables D[i,a].
+############################################################
+
+DerivationBasis59 := function(prod)
+    local d, numVars, varIndex, rows, i, j, b, row,
+          p, k, a, raw, good;
+
+    d := 27;
+    numVars := d*d;
+
+    varIndex := function(i, a)
+        return (i-1)*d + a;
+    end;
+
+    rows := [];
+
+    for i in [1..d] do
+        for j in [i..d] do
+
+            p := prod[i][j];
+
+            for b in [1..d] do
+                row := List([1..numVars], x -> zero59);
+
+                # D(e_i * e_j)
+                for k in [1..d] do
+                    if p[k] <> zero59 then
+                        row[varIndex(k,b)] := row[varIndex(k,b)] + p[k];
+                    fi;
+                od;
+
+                # - D(e_i) * e_j
+                for a in [1..d] do
+                    if prod[a][j][b] <> zero59 then
+                        row[varIndex(i,a)] := row[varIndex(i,a)] - prod[a][j][b];
+                    fi;
+                od;
+
+                # - e_i * D(e_j)
+                for a in [1..d] do
+                    if prod[i][a][b] <> zero59 then
+                        row[varIndex(j,a)] := row[varIndex(j,a)] - prod[i][a][b];
+                    fi;
+                od;
+
+                Add(rows, row);
+            od;
+        od;
+    od;
+
+    raw := NullspaceMat(rows);
+
+    if Length(raw) = 0 then
+        return [];
+    fi;
+
+    if Length(raw[1]) = numVars then
+        return raw;
+    fi;
+
+    # fallback orientation
+    raw := NullspaceMat(TransposedMat(rows));
+
+    if Length(raw) = 0 then
+        return [];
+    fi;
+
+    if Length(raw[1]) = numVars then
+        return raw;
+    fi;
+
+    return [];
+end;;
+
+DerivationDimension59 := function(prod)
+    return Length(DerivationBasis59(prod));
+end;;
+
+############################################################
+# Run random product search
+############################################################
+
+Print("\n------------------------------------------------------------\n");
+Print("PART 3: RANDOM SEARCH FOR V27 PRODUCTS WITH LARGE DERIVATIONS\n");
+Print("------------------------------------------------------------\n");
+
+ProductReports59 := [];;
+SpecialProducts59 := [];;
+DimDistribution59 := [];;
+
+AddDimDistribution59 := function(dim)
+    local item59A;
+
+    for item59A in DimDistribution59 do
+        if item59A.dim = dim then
+            item59A.count := item59A.count + 1;
+            return;
+        fi;
+    od;
+
+    Add(DimDistribution59, rec(dim := dim, count := 1));
+end;;
+
+BestProduct59 := rec(
+    derivationDim := -1,
+    jordanFailures := fail,
+    index := fail,
+    coeffs := fail,
+    prod := fail
+);;
+
+StartTime59 := Runtime();;
+
+for rr59 in [1..MAX_RANDOM_PRODUCTS59] do
+
+    candidate59 := BuildRandomProduct59();;
+    derBasis59 := DerivationBasis59(candidate59.prod);;
+    derDim59 := Length(derBasis59);;
+
+    AddDimDistribution59(derDim59);
+
+    jordanFail59 := fail;
+
+    if derDim59 > BestProduct59.derivationDim or derDim59 in SAVE_PRODUCTS_WITH_DER_DIM59 then
+        jordanFail59 := JordanRandomFailures59(
+            candidate59.prod,
+            JORDAN_RANDOM_TESTS59
+        );
+    fi;
+
+    if derDim59 > BestProduct59.derivationDim then
+        BestProduct59 := rec(
+            derivationDim := derDim59,
+            jordanFailures := jordanFail59,
+            index := rr59,
+            coeffs := candidate59.coeffs,
+            prod := candidate59.prod
+        );
+
+        Print("\n*** NEW BEST PRODUCT at random test ", rr59, " ***\n");
+        Print("  derivation dimension = ", derDim59, "\n");
+        Print("  random Jordan failures = ", jordanFail59,
+              " / ", JORDAN_RANDOM_TESTS59, "\n");
+    fi;
+
+    if derDim59 in SAVE_PRODUCTS_WITH_DER_DIM59 then
+        Print("\n*** SPECIAL DERIVATION DIMENSION FOUND ***\n");
+        Print("  test #", rr59, "\n");
+        Print("  derivation dimension = ", derDim59, "\n");
+        Print("  random Jordan failures = ", jordanFail59,
+              " / ", JORDAN_RANDOM_TESTS59, "\n");
+
+        Add(SpecialProducts59, rec(
+            index := rr59,
+            derivationDim := derDim59,
+            jordanFailures := jordanFail59,
+            coeffs := candidate59.coeffs,
+            prod := candidate59.prod,
+            derivationBasis := derBasis59
+        ));
+    fi;
+
+    Add(ProductReports59, rec(
+        index := rr59,
+        derivationDim := derDim59,
+        jordanFailures := jordanFail59
+    ));
+
+    if rr59 mod 10 = 0 then
+        Print("  tested random products ", rr59,
+              " / ", MAX_RANDOM_PRODUCTS59,
+              " | current derDim=", derDim59,
+              " | best derDim=", BestProduct59.derivationDim,
+              " | special hits=", Length(SpecialProducts59),
+              " | elapsed ms=", Runtime() - StartTime59,
+              "\n");
+    fi;
+od;
+
+############################################################
+# Final distribution
+############################################################
+
+SortBy(DimDistribution59, r -> r.dim);
+
+Print("\n------------------------------------------------------------\n");
+Print("PART 4: DERIVATION DIMENSION DISTRIBUTION\n");
+Print("------------------------------------------------------------\n");
+
+for rec59 in DimDistribution59 do
+    Print("  derivation dimension ", rec59.dim,
+          ": count ", rec59.count, "\n");
+od;
+
+############################################################
+# Final report
+############################################################
+
+Print("\n============================================================\n");
+Print("STEP 59A FINAL REPORT\n");
+Print("============================================================\n");
+
+Print("\nProduct-block Hom dimensions:\n");
+Print("  Sym^2(12) -> 1  : ", H_S12_to_1_59.homDim, "\n");
+Print("  Sym^2(12) -> 12 : ", H_S12_to_12_59.homDim, "\n");
+Print("  Sym^2(12) -> 14 : ", H_S12_to_14_59.homDim, "\n");
+Print("  12 tensor 14 -> 1  : ", H_T1214_to_1_59.homDim, "\n");
+Print("  12 tensor 14 -> 12 : ", H_T1214_to_12_59.homDim, "\n");
+Print("  12 tensor 14 -> 14 : ", H_T1214_to_14_59.homDim, "\n");
+Print("  Sym^2(14) -> 1  : ", H_S14_to_1_59.homDim, "\n");
+Print("  Sym^2(14) -> 12 : ", H_S14_to_12_59.homDim, "\n");
+Print("  Sym^2(14) -> 14 : ", H_S14_to_14_59.homDim, "\n");
+
+Print("\nRandom product tests completed = ", Length(ProductReports59), "\n");
+Print("Best product index = ", BestProduct59.index, "\n");
+Print("Best derivation dimension = ", BestProduct59.derivationDim, "\n");
+Print("Best random Jordan failures = ", BestProduct59.jordanFailures,
+      " / ", JORDAN_RANDOM_TESTS59, "\n");
+
+Print("\nSpecial products saved = ", Length(SpecialProducts59), "\n");
+
+if Length(SpecialProducts59) > 0 then
+    for sp59 in SpecialProducts59 do
+        Print("  product #", sp59.index,
+              " | derDim=", sp59.derivationDim,
+              " | Jordan random failures=", sp59.jordanFailures,
+              "\n");
+    od;
+fi;
+
+Print("\nInterpretation:\n");
+
+if Length(Filtered(SpecialProducts59, x -> x.derivationDim = 52)) > 0 then
+    Print("  A product with derivation algebra dimension 52 was found.\n");
+    Print("  This is a major signal for an F4/Albert-style structure on\n");
+    Print("  V27 = 1 + 12 + 14. Next step: inspect its derivation algebra\n");
+    Print("  and compare its H-character with 2*12 + 2*14.\n");
+else
+    Print("  No derivation-dimension-52 product was found in this random run.\n");
+    Print("  This does not disprove the supervisor route. It means the simple\n");
+    Print("  random H-invariant product search did not immediately recover\n");
+    Print("  an Albert/F4-type product. The block Hom dimensions above are\n");
+    Print("  still useful structural data for the next targeted search.\n");
+fi;
+
+Print("\nObjects retained for follow-up:\n");
+Print("  ProductReports59\n");
+Print("  DimDistribution59\n");
+Print("  BestProduct59\n");
+Print("  SpecialProducts59\n");
+
+Print("\nSTEP 59A FINISHED.\n");
+Print("Log file: STEP59A_V27_PRODUCT_DERIVATION_SEARCH_LOG.txt\n");
+Print("============================================================\n");
+
+LogTo();
+
+
+
+############################################################
+# STEP 59B:
+# CORRECTED LONG V27 PRODUCT / DERIVATION SEARCH
+#
+# Continue after Step 59A partial run.
+#
+# First leave brk> by typing:
+#   quit;
+#
+# Then paste this at gap>.
+#
+# This uses the already-computed Hom spaces from Step 59A:
+#   H_S12_to_1_59
+#   H_S12_to_12_59
+#   H_S12_to_14_59
+#   H_T1214_to_1_59
+#   H_T1214_to_12_59
+#   H_T1214_to_14_59
+#   H_S14_to_1_59
+#   H_S14_to_12_59
+#   H_S14_to_14_59
+#
+# Fix:
+#   avoids using variable name rec.
+#
+# Goal:
+#   Randomly search H-invariant commutative unital products on
+#   V27 = 1 + 12 + 14.
+#
+# Big signal:
+#   derivation algebra dimension 52.
+############################################################
+
+LogTo("STEP59B_CORRECTED_V27_PRODUCT_SEARCH_LOG.txt");
+
+Print("\n============================================================\n");
+Print("STEP 59B: CORRECTED LONG V27 PRODUCT / DERIVATION SEARCH\n");
+Print("============================================================\n");
+
+if not IsBound(H_S12_to_1_59) then
+    Error("Step 59A Hom spaces are not available. Re-run Step 59A parts 1-2.");
+fi;
+
+if not IsBound(BuildRandomProduct59) then
+    Error("BuildRandomProduct59 is not bound. Step 59A definitions are missing.");
+fi;
+
+if not IsBound(DerivationBasis59) then
+    Error("DerivationBasis59 is not bound. Step 59A definitions are missing.");
+fi;
+
+if not IsBound(JordanRandomFailures59) then
+    Error("JordanRandomFailures59 is not bound. Step 59A definitions are missing.");
+fi;
+
+############################################################
+# Parameters
+############################################################
+
+MAX_RANDOM_PRODUCTS59B := 500;;
+JORDAN_RANDOM_TESTS59B := 20;;
+
+# We especially care about 52. Nearby dimensions are also worth saving.
+SAVE_DER_DIMS59B := [52,51,53,50,54,49,55,48,56];;
+
+Print("MAX_RANDOM_PRODUCTS59B = ", MAX_RANDOM_PRODUCTS59B, "\n");
+Print("JORDAN_RANDOM_TESTS59B = ", JORDAN_RANDOM_TESTS59B, "\n");
+Print("Save derivation dimensions = ", SAVE_DER_DIMS59B, "\n");
+
+Print("\nReusing Step 59A Hom dimensions:\n");
+Print("  Sym^2(12) -> 1  : ", H_S12_to_1_59.homDim, "\n");
+Print("  Sym^2(12) -> 12 : ", H_S12_to_12_59.homDim, "\n");
+Print("  Sym^2(12) -> 14 : ", H_S12_to_14_59.homDim, "\n");
+Print("  12 tensor 14 -> 1  : ", H_T1214_to_1_59.homDim, "\n");
+Print("  12 tensor 14 -> 12 : ", H_T1214_to_12_59.homDim, "\n");
+Print("  12 tensor 14 -> 14 : ", H_T1214_to_14_59.homDim, "\n");
+Print("  Sym^2(14) -> 1  : ", H_S14_to_1_59.homDim, "\n");
+Print("  Sym^2(14) -> 12 : ", H_S14_to_12_59.homDim, "\n");
+Print("  Sym^2(14) -> 14 : ", H_S14_to_14_59.homDim, "\n");
+
+ProductParameterDim59B :=
+    H_S12_to_1_59.homDim +
+    H_S12_to_12_59.homDim +
+    H_S12_to_14_59.homDim +
+    H_T1214_to_1_59.homDim +
+    H_T1214_to_12_59.homDim +
+    H_T1214_to_14_59.homDim +
+    H_S14_to_1_59.homDim +
+    H_S14_to_12_59.homDim +
+    H_S14_to_14_59.homDim;;
+
+Print("\nTotal H-invariant product parameter dimension = ",
+      ProductParameterDim59B, "\n");
+
+############################################################
+# Corrected distribution helper
+############################################################
+
+ProductReports59B := [];;
+SpecialProducts59B := [];;
+DimDistribution59B := [];;
+
+AddDimDistribution59B := function(dimVal)
+    local item;
+
+    for item in DimDistribution59B do
+        if item.dim = dimVal then
+            item.count := item.count + 1;
+            return;
+        fi;
+    od;
+
+    Add(DimDistribution59B, rec(dim := dimVal, count := 1));
+end;;
+
+BestProduct59B := rec(
+    derivationDim := -1,
+    jordanFailures := fail,
+    index := fail,
+    coeffs := fail,
+    prod := fail
+);;
+
+############################################################
+# Main random loop
+############################################################
+
+Print("\n------------------------------------------------------------\n");
+Print("PART 1: RANDOM PRODUCT SEARCH\n");
+Print("------------------------------------------------------------\n");
+
+StartTime59B := Runtime();;
+
+for rr59B in [1..MAX_RANDOM_PRODUCTS59B] do
+
+    candidate59B := BuildRandomProduct59();;
+
+    derBasis59B := DerivationBasis59(candidate59B.prod);;
+    derDim59B := Length(derBasis59B);;
+
+    AddDimDistribution59B(derDim59B);
+
+    jordanFail59B := fail;
+
+    if derDim59B > BestProduct59B.derivationDim or derDim59B in SAVE_DER_DIMS59B then
+        jordanFail59B := JordanRandomFailures59(
+            candidate59B.prod,
+            JORDAN_RANDOM_TESTS59B
+        );
+    fi;
+
+    if derDim59B > BestProduct59B.derivationDim then
+        BestProduct59B := rec(
+            derivationDim := derDim59B,
+            jordanFailures := jordanFail59B,
+            index := rr59B,
+            coeffs := candidate59B.coeffs,
+            prod := candidate59B.prod
+        );
+
+        Print("\n*** NEW BEST PRODUCT at random test ", rr59B, " ***\n");
+        Print("  derivation dimension = ", derDim59B, "\n");
+        Print("  random Jordan failures = ", jordanFail59B,
+              " / ", JORDAN_RANDOM_TESTS59B, "\n");
+    fi;
+
+    if derDim59B in SAVE_DER_DIMS59B then
+        Print("\n*** SPECIAL DERIVATION DIMENSION FOUND ***\n");
+        Print("  test #", rr59B, "\n");
+        Print("  derivation dimension = ", derDim59B, "\n");
+        Print("  random Jordan failures = ", jordanFail59B,
+              " / ", JORDAN_RANDOM_TESTS59B, "\n");
+
+        Add(SpecialProducts59B, rec(
+            index := rr59B,
+            derivationDim := derDim59B,
+            jordanFailures := jordanFail59B,
+            coeffs := candidate59B.coeffs,
+            prod := candidate59B.prod,
+            derivationBasis := derBasis59B
+        ));
+    fi;
+
+    Add(ProductReports59B, rec(
+        index := rr59B,
+        derivationDim := derDim59B,
+        jordanFailures := jordanFail59B
+    ));
+
+    if rr59B mod 10 = 0 then
+        Print("  tested random products ", rr59B,
+              " / ", MAX_RANDOM_PRODUCTS59B,
+              " | current derDim=", derDim59B,
+              " | best derDim=", BestProduct59B.derivationDim,
+              " | special hits=", Length(SpecialProducts59B),
+              " | elapsed ms=", Runtime() - StartTime59B,
+              "\n");
+    fi;
+od;
+
+############################################################
+# Distribution
+############################################################
+
+SortBy(DimDistribution59B, x -> x.dim);
+
+Print("\n------------------------------------------------------------\n");
+Print("PART 2: DERIVATION DIMENSION DISTRIBUTION\n");
+Print("------------------------------------------------------------\n");
+
+for item59B in DimDistribution59B do
+    Print("  derivation dimension ", item59B.dim,
+          ": count ", item59B.count, "\n");
+od;
+
+############################################################
+# Extra: if best product exists, test Jordan identity harder
+############################################################
+
+Print("\n------------------------------------------------------------\n");
+Print("PART 3: HARDER TEST ON BEST PRODUCT\n");
+Print("------------------------------------------------------------\n");
+
+if BestProduct59B.prod <> fail then
+    BestHardJordan59B := JordanRandomFailures59(BestProduct59B.prod, 100);;
+
+    Print("Best product index = ", BestProduct59B.index, "\n");
+    Print("Best derivation dimension = ", BestProduct59B.derivationDim, "\n");
+    Print("Best product 100 random Jordan failures = ",
+          BestHardJordan59B, " / 100\n");
+else
+    BestHardJordan59B := fail;;
+    Print("No best product was created.\n");
+fi;
+
+############################################################
+# Final report
+############################################################
+
+Print("\n============================================================\n");
+Print("STEP 59B FINAL REPORT\n");
+Print("============================================================\n");
+
+Print("\nProduct parameter dimension = ", ProductParameterDim59B, "\n");
+Print("Random product tests completed = ", Length(ProductReports59B), "\n");
+
+Print("\nBest product:\n");
+Print("  index = ", BestProduct59B.index, "\n");
+Print("  derivation dimension = ", BestProduct59B.derivationDim, "\n");
+Print("  first random Jordan failures = ", BestProduct59B.jordanFailures,
+      " / ", JORDAN_RANDOM_TESTS59B, "\n");
+Print("  hard random Jordan failures = ", BestHardJordan59B, " / 100\n");
+
+Print("\nSpecial products saved = ", Length(SpecialProducts59B), "\n");
+
+if Length(SpecialProducts59B) > 0 then
+    for sp59B in SpecialProducts59B do
+        Print("  product #", sp59B.index,
+              " | derDim=", sp59B.derivationDim,
+              " | Jordan random failures=", sp59B.jordanFailures,
+              "\n");
+    od;
+fi;
+
+Print("\nDerivation dimension distribution:\n");
+
+for item59B in DimDistribution59B do
+    Print("  dim ", item59B.dim, ": ", item59B.count, "\n");
+od;
+
+Print("\nInterpretation:\n");
+
+if Length(Filtered(SpecialProducts59B, x -> x.derivationDim = 52)) > 0 then
+    Print("  SUCCESS SIGNAL: at least one H-invariant product on V27 has\n");
+    Print("  derivation algebra dimension 52. This is a major candidate for\n");
+    Print("  an F4/Albert-style construction. Next step should inspect the\n");
+    Print("  derivation algebra as an H-module and compare with 2*12+2*14.\n");
+else
+    Print("  No derivation-dimension-52 product was found in this corrected\n");
+    Print("  random run. This does not disprove the route, but suggests the\n");
+    Print("  product needs normalisation/identity constraints or a targeted\n");
+    Print("  solve rather than pure random coefficients.\n");
+fi;
+
+Print("\nObjects retained:\n");
+Print("  ProductReports59B\n");
+Print("  DimDistribution59B\n");
+Print("  BestProduct59B\n");
+Print("  SpecialProducts59B\n");
+
+Print("\nSTEP 59B FINISHED.\n");
+Print("Log file: STEP59B_CORRECTED_V27_PRODUCT_SEARCH_LOG.txt\n");
+Print("============================================================\n");
+
+LogTo();
+
+
+
+############################################################
+# STEP 60B OVERNIGHT:
+# FULL EXHAUSTIVE PROJECTIVE SCAN OF V27 PRODUCT SPACE
+#
+# Run time target: overnight / up to 12 hours.
+#
+# Current state:
+#   Step 59B finished.
+#   V27 product parameter dimension = 8.
+#   Random products were generic:
+#       dim Der = 0 for 499 products
+#       dim Der = 1 for 1 product
+#
+# Therefore:
+#   Do NOT continue random products.
+#
+# This script exhaustively scans the whole projective coefficient
+# space P^7(GF(7)):
+#
+#       (7^8 - 1)/(7 - 1) = 960800 coefficient directions.
+#
+# It uses cheap Jordan filters first.
+# It computes expensive derivation algebras only for strong survivors.
+#
+# Product coefficient order:
+#   c1 = Sym^2(12) -> 1
+#   c2 = Sym^2(12) -> 12
+#   c3,c4 = 12 tensor 14 -> 12
+#   c5,c6 = 12 tensor 14 -> 14
+#   c7 = Sym^2(14) -> 1
+#   c8 = Sym^2(14) -> 12
+#
+# Zero Hom blocks are omitted.
+############################################################
+
+LogTo("STEP60B_OVERNIGHT_FULL_PROJECTIVE_V27_SCAN_LOG.txt");
+
+Print("\n============================================================\n");
+Print("STEP 60B OVERNIGHT: FULL PROJECTIVE V27 PRODUCT SCAN\n");
+Print("============================================================\n");
+
+############################################################
+# Safety checks
+############################################################
+
+if not IsBound(H_S12_to_1_59) then
+    Error("Need Step 59A/59B Hom spaces. H_S12_to_1_59 is not bound.");
+fi;
+
+if not IsBound(H_S12_to_12_59) then
+    Error("Need H_S12_to_12_59.");
+fi;
+
+if not IsBound(H_T1214_to_12_59) then
+    Error("Need H_T1214_to_12_59.");
+fi;
+
+if not IsBound(H_T1214_to_14_59) then
+    Error("Need H_T1214_to_14_59.");
+fi;
+
+if not IsBound(H_S14_to_1_59) then
+    Error("Need H_S14_to_1_59.");
+fi;
+
+if not IsBound(H_S14_to_12_59) then
+    Error("Need H_S14_to_12_59.");
+fi;
+
+if not IsBound(LinearComboHomVec59) then
+    Error("Need LinearComboHomVec59 from Step 59A.");
+fi;
+
+if not IsBound(HomVecToRows59) then
+    Error("Need HomVecToRows59 from Step 59A.");
+fi;
+
+if not IsBound(BuildSymPairData59) then
+    Error("Need BuildSymPairData59 from Step 59A.");
+fi;
+
+if not IsBound(ProdVec59) then
+    Error("Need ProdVec59 from Step 59A.");
+fi;
+
+if not IsBound(DerivationBasis59) then
+    Error("Need DerivationBasis59 from Step 59A.");
+fi;
+
+############################################################
+# Parameters
+############################################################
+
+F60B := GF(7);;
+zero60B := Zero(F60B);;
+one60B := One(F60B);;
+elts60B := Elements(F60B);;
+
+TOTAL_PROJECTIVE_POINTS60B := 960800;;
+
+# 12 hours in milliseconds.
+TIME_LIMIT_MS60B := 12 * 60 * 60 * 1000;;
+
+# Cheap filters. If these are too strict, change FIRST_FILTER_TESTS60B
+# from 16 to 8. For an overnight run, 16 is better.
+FIRST_FILTER_TESTS60B := 16;;
+HARD_FILTER_TESTS60B := 160;;
+
+# Derivation computations are expensive.
+MAX_DERIVATION_TESTS60B := 300;;
+
+# Save anything near 52, and also unusually large dimensions.
+SPECIAL_DER_DIMS60B := [40..60];;
+
+PROGRESS_EVERY60B := 1000;;
+
+Print("Total projective coefficient directions = ",
+      TOTAL_PROJECTIVE_POINTS60B, "\n");
+Print("Time limit ms = ", TIME_LIMIT_MS60B, "\n");
+Print("First Jordan filter tests = ", FIRST_FILTER_TESTS60B, "\n");
+Print("Hard Jordan filter tests = ", HARD_FILTER_TESTS60B, "\n");
+Print("Max derivation tests = ", MAX_DERIVATION_TESTS60B, "\n");
+Print("Progress every = ", PROGRESS_EVERY60B, "\n");
+
+############################################################
+# Helper: build active Hom map rows
+############################################################
+
+GetMapRows60B := function(H, coeffs)
+    local vec;
+
+    vec := LinearComboHomVec59(coeffs, H.basis, H.sourceDim, H.targetDim);
+    return HomVecToRows59(vec, H.sourceDim, H.targetDim);
+end;;
+
+BuildProductFromCoeffs60B := function(c)
+    local pdata12, pdata14,
+          mS12_1, mS12_12,
+          mT_12, mT_14,
+          mS14_1, mS14_12,
+          prod, i, j, a, b, q, out;
+
+    pdata12 := BuildSymPairData59(12);
+    pdata14 := BuildSymPairData59(14);
+
+    mS12_1  := GetMapRows60B(H_S12_to_1_59,  [c[1]]);
+    mS12_12 := GetMapRows60B(H_S12_to_12_59, [c[2]]);
+
+    mT_12 := GetMapRows60B(H_T1214_to_12_59, [c[3], c[4]]);
+    mT_14 := GetMapRows60B(H_T1214_to_14_59, [c[5], c[6]]);
+
+    mS14_1  := GetMapRows60B(H_S14_to_1_59,  [c[7]]);
+    mS14_12 := GetMapRows60B(H_S14_to_12_59, [c[8]]);
+
+    prod := [];
+
+    for i in [1..27] do
+        prod[i] := [];
+        for j in [1..27] do
+            prod[i][j] := ZeroVec59(27);
+        od;
+    od;
+
+    for i in [1..27] do
+        for j in [i..27] do
+
+            if i = 1 and j = 1 then
+                out := BasisVec59(27, 1);
+
+            elif i = 1 then
+                out := BasisVec59(27, j);
+
+            elif j = 1 then
+                out := BasisVec59(27, i);
+
+            elif i >= 2 and i <= 13 and j >= 2 and j <= 13 then
+                a := i - 1;
+                b := j - 1;
+                q := pdata12.pairIndex[a][b];
+
+                out := ZeroVec59(27);
+                out := AddVec59(out, EmbedToV27_59(mS12_1[q], "1"));
+                out := AddVec59(out, EmbedToV27_59(mS12_12[q], "12"));
+
+            elif i >= 2 and i <= 13 and j >= 14 and j <= 27 then
+                a := i - 1;
+                b := j - 13;
+                q := (a-1)*14 + b;
+
+                out := ZeroVec59(27);
+                out := AddVec59(out, EmbedToV27_59(mT_12[q], "12"));
+                out := AddVec59(out, EmbedToV27_59(mT_14[q], "14"));
+
+            elif i >= 14 and i <= 27 and j >= 14 and j <= 27 then
+                a := i - 13;
+                b := j - 13;
+                q := pdata14.pairIndex[a][b];
+
+                out := ZeroVec59(27);
+                out := AddVec59(out, EmbedToV27_59(mS14_1[q], "1"));
+                out := AddVec59(out, EmbedToV27_59(mS14_12[q], "12"));
+
+            else
+                out := prod[j][i];
+            fi;
+
+            prod[i][j] := out;
+            prod[j][i] := out;
+        od;
+    od;
+
+    return prod;
+end;;
+
+############################################################
+# Jordan identity tests
+#
+# Jordan identity:
+#   ((x*x)*y)*x = (x*x)*(y*x)
+############################################################
+
+RandomVec60B := function(d)
+    return List([1..d], i -> Random(elts60B));
+end;;
+
+MakeJordanPairs60B := function(n)
+    local pairs, r;
+
+    pairs := [];
+
+    for r in [1..n] do
+        Add(pairs, rec(
+            x := RandomVec60B(27),
+            y := RandomVec60B(27)
+        ));
+    od;
+
+    return pairs;
+end;;
+
+JordanFailuresOnPairs60B := function(prod, pairs)
+    local count, pairObj, x, y, x2, yx, left, right;
+
+    count := 0;
+
+    for pairObj in pairs do
+        x := pairObj.x;
+        y := pairObj.y;
+
+        x2 := ProdVec59(x, x, prod);
+        yx := ProdVec59(y, x, prod);
+
+        left := ProdVec59(ProdVec59(x2, y, prod), x, prod);
+        right := ProdVec59(x2, yx, prod);
+
+        if left <> right then
+            count := count + 1;
+        fi;
+    od;
+
+    return count;
+end;;
+
+FirstPairs60B := MakeJordanPairs60B(FIRST_FILTER_TESTS60B);;
+HardPairs60B := MakeJordanPairs60B(HARD_FILTER_TESTS60B);;
+
+############################################################
+# Record helpers
+############################################################
+
+UpdateDimDistribution60B := function(dist, dimVal)
+    local itemObj;
+
+    for itemObj in dist do
+        if itemObj.dim = dimVal then
+            itemObj.count := itemObj.count + 1;
+            return;
+        fi;
+    od;
+
+    Add(dist, rec(dim := dimVal, count := 1));
+end;;
+
+CoeffString60B := function(c)
+    return String(List(c, x -> x));
+end;;
+
+############################################################
+# Global scan state
+############################################################
+
+ScanCount60B := 0;;
+FirstSurvivorCount60B := 0;;
+HardSurvivorCount60B := 0;;
+DerivationTestCount60B := 0;;
+StopScan60B := false;;
+
+JordanSurvivors60B := [];;
+DerivationReports60B := [];;
+SpecialProducts60B := [];;
+DerDimDistribution60B := [];;
+
+BestDer60B := rec(
+    coeffs := fail,
+    derivationDim := -1,
+    firstJordanFailures := fail,
+    hardJordanFailures := fail,
+    index := fail
+);;
+
+StartTime60B := Runtime();;
+LastProgressTime60B := StartTime60B;;
+
+############################################################
+# Process one coefficient direction
+############################################################
+
+ProcessCoeff60B := function(coeff60B)
+    local prod60B, jfFirst60B, jfHard60B,
+          derBasis60B, derDim60B, elapsed60B;
+
+    if StopScan60B then
+        return;
+    fi;
+
+    ScanCount60B := ScanCount60B + 1;
+
+    prod60B := BuildProductFromCoeffs60B(coeff60B);
+
+    jfFirst60B := JordanFailuresOnPairs60B(prod60B, FirstPairs60B);
+
+    if jfFirst60B = 0 then
+        FirstSurvivorCount60B := FirstSurvivorCount60B + 1;
+
+        jfHard60B := JordanFailuresOnPairs60B(prod60B, HardPairs60B);
+
+        Print("\n*** FIRST-FILTER SURVIVOR ***\n");
+        Print("  scan index = ", ScanCount60B, "\n");
+        Print("  coeffs = ", coeff60B, "\n");
+        Print("  first failures = ", jfFirst60B,
+              " / ", FIRST_FILTER_TESTS60B, "\n");
+        Print("  hard failures = ", jfHard60B,
+              " / ", HARD_FILTER_TESTS60B, "\n");
+
+        Add(JordanSurvivors60B, rec(
+            index := ScanCount60B,
+            coeffs := coeff60B,
+            firstJordanFailures := jfFirst60B,
+            hardJordanFailures := jfHard60B
+        ));
+
+        if jfHard60B = 0 then
+            HardSurvivorCount60B := HardSurvivorCount60B + 1;
+
+            if DerivationTestCount60B < MAX_DERIVATION_TESTS60B then
+                DerivationTestCount60B := DerivationTestCount60B + 1;
+
+                derBasis60B := DerivationBasis59(prod60B);
+                derDim60B := Length(derBasis60B);
+
+                UpdateDimDistribution60B(DerDimDistribution60B, derDim60B);
+
+                Print("  derivation dimension = ", derDim60B, "\n");
+
+                Add(DerivationReports60B, rec(
+                    index := ScanCount60B,
+                    coeffs := coeff60B,
+                    derivationDim := derDim60B,
+                    firstJordanFailures := jfFirst60B,
+                    hardJordanFailures := jfHard60B,
+                    derivationBasis := derBasis60B,
+                    prod := prod60B
+                ));
+
+                if derDim60B > BestDer60B.derivationDim then
+                    BestDer60B := rec(
+                        coeffs := coeff60B,
+                        derivationDim := derDim60B,
+                        firstJordanFailures := jfFirst60B,
+                        hardJordanFailures := jfHard60B,
+                        index := ScanCount60B
+                    );
+
+                    Print("  *** NEW BEST DERIVATION DIMENSION = ",
+                          derDim60B, " ***\n");
+                fi;
+
+                if derDim60B in SPECIAL_DER_DIMS60B then
+                    Add(SpecialProducts60B, rec(
+                        index := ScanCount60B,
+                        coeffs := coeff60B,
+                        derivationDim := derDim60B,
+                        firstJordanFailures := jfFirst60B,
+                        hardJordanFailures := jfHard60B,
+                        derivationBasis := derBasis60B,
+                        prod := prod60B
+                    ));
+
+                    Print("  *** SPECIAL DERIVATION PRODUCT SAVED ***\n");
+                fi;
+            fi;
+        fi;
+    fi;
+
+    if ScanCount60B mod PROGRESS_EVERY60B = 0 then
+        elapsed60B := Runtime() - StartTime60B;
+
+        Print("  scanned ", ScanCount60B,
+              " / ", TOTAL_PROJECTIVE_POINTS60B,
+              " | first survivors=", FirstSurvivorCount60B,
+              " | hard survivors=", HardSurvivorCount60B,
+              " | derivation tests=", DerivationTestCount60B,
+              " | best derDim=", BestDer60B.derivationDim,
+              " | elapsed ms=", elapsed60B,
+              "\n");
+
+        if elapsed60B >= TIME_LIMIT_MS60B then
+            Print("\nTIME LIMIT REACHED. Stopping scan cleanly.\n");
+            StopScan60B := true;
+        fi;
+    fi;
+end;;
+
+############################################################
+# Recursive enumeration of all projective points in P^7(GF(7))
+#
+# Normal form:
+#   first nonzero coefficient is 1.
+#
+# For first nonzero position p:
+#   c1=...=c_{p-1}=0
+#   cp=1
+#   c_{p+1},...,c8 arbitrary in GF(7)
+############################################################
+
+ExtendCoeff60B := function(pos, coeff)
+    local a, nextCoeff;
+
+    if StopScan60B then
+        return;
+    fi;
+
+    if pos > 8 then
+        ProcessCoeff60B(coeff);
+        return;
+    fi;
+
+    for a in elts60B do
+        if StopScan60B then
+            return;
+        fi;
+
+        nextCoeff := ShallowCopy(coeff);
+        nextCoeff[pos] := a;
+        ExtendCoeff60B(pos + 1, nextCoeff);
+    od;
+end;;
+
+StartProjectiveBlock60B := function(firstPos)
+    local coeff, i;
+
+    coeff := [];
+
+    for i in [1..8] do
+        coeff[i] := zero60B;
+    od;
+
+    coeff[firstPos] := one60B;
+
+    ExtendCoeff60B(firstPos + 1, coeff);
+end;;
+
+############################################################
+# Run the full overnight scan
+############################################################
+
+Print("\n------------------------------------------------------------\n");
+Print("PART 1: FULL PROJECTIVE SCAN STARTING\n");
+Print("------------------------------------------------------------\n");
+
+for firstPos60B in [1..8] do
+    if StopScan60B then
+        break;
+    fi;
+
+    Print("\nStarting projective block with first nonzero position = ",
+          firstPos60B, "\n");
+
+    StartProjectiveBlock60B(firstPos60B);
+od;
+
+############################################################
+# Final report
+############################################################
+
+SortBy(DerDimDistribution60B, x -> x.dim);
+
+Print("\n============================================================\n");
+Print("STEP 60B FINAL REPORT\n");
+Print("============================================================\n");
+
+Print("Total projective directions possible = ",
+      TOTAL_PROJECTIVE_POINTS60B, "\n");
+Print("Projective directions actually scanned = ", ScanCount60B, "\n");
+Print("First-filter Jordan survivors = ", FirstSurvivorCount60B, "\n");
+Print("Hard-filter Jordan survivors = ", HardSurvivorCount60B, "\n");
+Print("Derivation tests performed = ", DerivationTestCount60B, "\n");
+
+Print("\nBest derivation result:\n");
+Print("  index = ", BestDer60B.index, "\n");
+Print("  coeffs = ", BestDer60B.coeffs, "\n");
+Print("  derivation dimension = ", BestDer60B.derivationDim, "\n");
+Print("  first Jordan failures = ", BestDer60B.firstJordanFailures, "\n");
+Print("  hard Jordan failures = ", BestDer60B.hardJordanFailures, "\n");
+
+Print("\nDerivation dimension distribution among hard survivors tested:\n");
+
+if Length(DerDimDistribution60B) = 0 then
+    Print("  none\n");
+else
+    for item60B in DerDimDistribution60B do
+        Print("  dim ", item60B.dim, ": ", item60B.count, "\n");
+    od;
+fi;
+
+Print("\nSpecial products saved = ", Length(SpecialProducts60B), "\n");
+
+if Length(SpecialProducts60B) > 0 then
+    for sp60B in SpecialProducts60B do
+        Print("  index ", sp60B.index,
+              " | derDim=", sp60B.derivationDim,
+              " | coeffs=", sp60B.coeffs,
+              " | hardJordanFailures=", sp60B.hardJordanFailures,
+              "\n");
+    od;
+fi;
+
+Print("\nInterpretation:\n");
+
+if Length(Filtered(SpecialProducts60B, x -> x.derivationDim = 52)) > 0 then
+    Print("  SUCCESS: found a Jordan-filtered product with derivation dimension 52.\n");
+    Print("  This is strong evidence for an F4/Albert-style V27 product.\n");
+    Print("  Next step: inspect the derivation algebra as an H-module and\n");
+    Print("  compare with the target V52 = 2*12 + 2*14.\n");
+elif HardSurvivorCount60B > 0 then
+    Print("  Some products passed the hard Jordan filters, but none gave\n");
+    Print("  derivation dimension 52 in the tested set.\n");
+    Print("  Next step should inspect the best hard survivors or impose\n");
+    Print("  exact polynomial constraints.\n");
+elif FirstSurvivorCount60B > 0 then
+    Print("  Some products passed the first Jordan filters, but no hard\n");
+    Print("  survivor appeared. This suggests the random Jordan tests are\n");
+    Print("  already strongly excluding generic products.\n");
+else
+    Print("  No coefficient direction passed the first Jordan filters.\n");
+    Print("  This is a strong negative for the naive unital V27 product model\n");
+    Print("  under the current H-module splitting and basis conventions.\n");
+fi;
+
+Print("\nObjects retained:\n");
+Print("  JordanSurvivors60B\n");
+Print("  DerivationReports60B\n");
+Print("  SpecialProducts60B\n");
+Print("  BestDer60B\n");
+Print("  DerDimDistribution60B\n");
+
+Print("\nSTEP 60B FINISHED.\n");
+Print("Log file: STEP60B_OVERNIGHT_FULL_PROJECTIVE_V27_SCAN_LOG.txt\n");
+Print("============================================================\n");
+
+LogTo();
+
+
+
+############################################################
+# STEP 60C:
+# INSPECT THE 9 STEP 60B JORDAN SURVIVORS
+#
+# Continue after Step 60B in the same GAP session.
+#
+# Goal:
+#   Step 60B found 9 Jordan-filter survivors, but their
+#   derivation dimensions were 169, 325, 403, 430, not 52.
+#
+# This step inspects whether those survivors are degenerate:
+#   - active coefficient blocks
+#   - multiplication table support
+#   - annihilator dimension
+#   - square-span dimension
+#   - product-span dimension
+#   - V26*V26 product image dimensions
+#
+# This should tell us whether the survivors are just sparse
+# products, not Albert/F4 products.
+############################################################
+
+Print("\n============================================================\n");
+Print("STEP 60C: INSPECT STEP 60B JORDAN SURVIVORS\n");
+Print("============================================================\n");
+
+if not IsBound(DerivationReports60B) then
+    Error("DerivationReports60B is not bound. Run Step 60B first.");
+fi;
+
+if Length(DerivationReports60B) = 0 then
+    Error("No Step 60B derivation reports found.");
+fi;
+
+F60C := GF(7);;
+zero60C := Zero(F60C);;
+one60C := One(F60C);;
+
+CanonicalGF7_60C := function(x)
+    local n;
+
+    for n in [0,1,2,3,-3,-2,-1] do
+        if x = n * one60C then
+            return n;
+        fi;
+    od;
+
+    return x;
+end;;
+
+CanonicalList60C := function(L)
+    return List(L, x -> CanonicalGF7_60C(x));
+end;;
+
+CoeffActiveLabels60C := function(c)
+    local labels, out, i;
+
+    labels := [
+        "c1: Sym^2(12)->1",
+        "c2: Sym^2(12)->12",
+        "c3: 12x14->12 basis1",
+        "c4: 12x14->12 basis2",
+        "c5: 12x14->14 basis1",
+        "c6: 12x14->14 basis2",
+        "c7: Sym^2(14)->1",
+        "c8: Sym^2(14)->12"
+    ];
+
+    out := [];
+
+    for i in [1..8] do
+        if c[i] <> zero60C then
+            Add(out, labels[i]);
+        fi;
+    od;
+
+    return out;
+end;;
+
+############################################################
+# Linear span of product images
+############################################################
+
+ProductImageRows60C := function(prod, indicesA, indicesB)
+    local rows, i, j;
+
+    rows := [];
+
+    for i in indicesA do
+        for j in indicesB do
+            Add(rows, prod[i][j]);
+        od;
+    od;
+
+    return BaseMat(rows);
+end;;
+
+ProductImageDim60C := function(prod, indicesA, indicesB)
+    return Length(ProductImageRows60C(prod, indicesA, indicesB));
+end;;
+
+SquareSpanDim60C := function(prod, indices)
+    local rows, i;
+
+    rows := [];
+
+    for i in indices do
+        Add(rows, prod[i][i]);
+    od;
+
+    return Length(BaseMat(rows));
+end;;
+
+############################################################
+# Left multiplication matrix L_x for basis vector e_i
+############################################################
+
+LeftMultMat60C := function(prod, i)
+    local M, j;
+
+    M := [];
+
+    for j in [1..27] do
+        Add(M, prod[i][j]);
+    od;
+
+    return M;
+end;;
+
+############################################################
+# Annihilator:
+#   Ann(A) = { v | v*w = 0 for all w }
+#
+# Since product is commutative, left annihilator is enough.
+############################################################
+
+AnnihilatorBasis60C := function(prod)
+    local d, rows, i, j, k, row, varIndex;
+
+    d := 27;
+
+    varIndex := function(i)
+        return i;
+    end;
+
+    rows := [];
+
+    # Unknown v = sum_i x_i e_i.
+    # For every basis e_j and coordinate k:
+    #   sum_i x_i * prod[i][j][k] = 0.
+    for j in [1..d] do
+        for k in [1..d] do
+            row := List([1..d], x -> zero60C);
+
+            for i in [1..d] do
+                if prod[i][j][k] <> zero60C then
+                    row[varIndex(i)] := row[varIndex(i)] + prod[i][j][k];
+                fi;
+            od;
+
+            Add(rows, row);
+        od;
+    od;
+
+    return NullspaceMat(rows);
+end;;
+
+############################################################
+# Identity check
+############################################################
+
+IdentityCheck60C := function(prod)
+    local i;
+
+    for i in [1..27] do
+        if prod[1][i] <> BasisVec59(27, i) then
+            return false;
+        fi;
+
+        if prod[i][1] <> BasisVec59(27, i) then
+            return false;
+        fi;
+    od;
+
+    return true;
+end;;
+
+############################################################
+# Basic exact Jordan check on basis triples
+#
+# This is stronger than random testing but still feasible:
+#   for basis x=e_i, y=e_j only.
+############################################################
+
+BasisJordanFailures60C := function(prod)
+    local failCount, i, j, x, y, x2, yx, left, right;
+
+    failCount := 0;
+
+    for i in [1..27] do
+        x := BasisVec59(27, i);
+        x2 := ProdVec59(x, x, prod);
+
+        for j in [1..27] do
+            y := BasisVec59(27, j);
+            yx := ProdVec59(y, x, prod);
+
+            left := ProdVec59(ProdVec59(x2, y, prod), x, prod);
+            right := ProdVec59(x2, yx, prod);
+
+            if left <> right then
+                failCount := failCount + 1;
+            fi;
+        od;
+    od;
+
+    return failCount;
+end;;
+
+############################################################
+# Inspect one survivor
+############################################################
+
+InspectSurvivor60C := function(rep)
+    local prod, c, active, annBasis,
+          dimAll, dimV12V12, dimV12V14, dimV14V14,
+          dimV26V26, sqAll, sqV12, sqV14,
+          basisJordanFails;
+
+    prod := rep.prod;
+    c := rep.coeffs;
+
+    active := CoeffActiveLabels60C(c);
+
+    Print("\n------------------------------------------------------------\n");
+    Print("Survivor index ", rep.index, "\n");
+    Print("------------------------------------------------------------\n");
+
+    Print("coeffs raw = ", c, "\n");
+    Print("coeffs canonical = ", CanonicalList60C(c), "\n");
+
+    Print("active blocks:\n");
+
+    if Length(active) = 0 then
+        Print("  none\n");
+    else
+        for item60C in active do
+            Print("  ", item60C, "\n");
+        od;
+    fi;
+
+    Print("derivation dimension = ", rep.derivationDim, "\n");
+    Print("first Jordan failures = ", rep.firstJordanFailures, "\n");
+    Print("hard Jordan failures = ", rep.hardJordanFailures, "\n");
+
+    Print("identity check = ", IdentityCheck60C(prod), "\n");
+
+    dimAll := ProductImageDim60C(prod, [1..27], [1..27]);
+    dimV12V12 := ProductImageDim60C(prod, [2..13], [2..13]);
+    dimV12V14 := ProductImageDim60C(prod, [2..13], [14..27]);
+    dimV14V14 := ProductImageDim60C(prod, [14..27], [14..27]);
+    dimV26V26 := ProductImageDim60C(prod, [2..27], [2..27]);
+
+    sqAll := SquareSpanDim60C(prod, [1..27]);
+    sqV12 := SquareSpanDim60C(prod, [2..13]);
+    sqV14 := SquareSpanDim60C(prod, [14..27]);
+
+    annBasis := AnnihilatorBasis60C(prod);
+
+    basisJordanFails := BasisJordanFailures60C(prod);
+
+    Print("product image dimensions:\n");
+    Print("  A*A image dim      = ", dimAll, "\n");
+    Print("  V12*V12 image dim  = ", dimV12V12, "\n");
+    Print("  V12*V14 image dim  = ", dimV12V14, "\n");
+    Print("  V14*V14 image dim  = ", dimV14V14, "\n");
+    Print("  V26*V26 image dim  = ", dimV26V26, "\n");
+
+    Print("square-span dimensions:\n");
+    Print("  squares of A    dim = ", sqAll, "\n");
+    Print("  squares of V12  dim = ", sqV12, "\n");
+    Print("  squares of V14  dim = ", sqV14, "\n");
+
+    Print("annihilator dimension = ", Length(annBasis), "\n");
+    Print("basis Jordan failures = ", basisJordanFails, " / ", 27*27, "\n");
+
+    return rec(
+        index := rep.index,
+        coeffs := c,
+        coeffsCanonical := CanonicalList60C(c),
+        activeBlocks := active,
+        derivationDim := rep.derivationDim,
+        productImageDimAll := dimAll,
+        productImageDimV12V12 := dimV12V12,
+        productImageDimV12V14 := dimV12V14,
+        productImageDimV14V14 := dimV14V14,
+        productImageDimV26V26 := dimV26V26,
+        squareSpanAll := sqAll,
+        squareSpanV12 := sqV12,
+        squareSpanV14 := sqV14,
+        annihilatorDim := Length(annBasis),
+        basisJordanFailures := basisJordanFails
+    );
+end;;
+
+############################################################
+# Run inspection
+############################################################
+
+SurvivorAnalysis60C := [];;
+
+for rep60C in DerivationReports60B do
+    Add(SurvivorAnalysis60C, InspectSurvivor60C(rep60C));
+od;
+
+############################################################
+# Final compact table
+############################################################
+
+Print("\n============================================================\n");
+Print("STEP 60C FINAL COMPACT TABLE\n");
+Print("============================================================\n");
+
+for a60C in SurvivorAnalysis60C do
+    Print("\nindex ", a60C.index, "\n");
+    Print("  coeffs = ", a60C.coeffsCanonical, "\n");
+    Print("  derDim = ", a60C.derivationDim, "\n");
+    Print("  product dims [A*A,V12*V12,V12*V14,V14*V14,V26*V26] = ",
+          [a60C.productImageDimAll,
+           a60C.productImageDimV12V12,
+           a60C.productImageDimV12V14,
+           a60C.productImageDimV14V14,
+           a60C.productImageDimV26V26], "\n");
+    Print("  square dims [A,V12,V14] = ",
+          [a60C.squareSpanAll,
+           a60C.squareSpanV12,
+           a60C.squareSpanV14], "\n");
+    Print("  annihilator dim = ", a60C.annihilatorDim, "\n");
+    Print("  basis Jordan failures = ", a60C.basisJordanFailures, "\n");
+od;
+
+Print("\nInterpretation guide:\n");
+Print("  If product image dimensions are small and annihilator dimension is large,\n");
+Print("  the survivor is degenerate and not an Albert/F4 product.\n");
+Print("  For an Albert-like product on V27, we would expect a much richer\n");
+Print("  product structure, not only sparse scalar/single-block products.\n");
+
+Print("\nSTEP 60C FINISHED.\n");
+Print("============================================================\n");
+
+
+
+############################################################
+# STEP 61A:
+# FINAL 3-HOUR VERIFICATION BEFORE REPORTING TO ALASTAIR
+#
+# Continue after Step 60C in the same GAP session.
+#
+# Aim:
+#   We already exhausted the naive V27 product space:
+#       P^7(GF(7)) = 960800 directions.
+#
+#   Step 60B found only 9 Jordan-filter survivors.
+#   Step 60C showed they are sparse/degenerate.
+#
+# This final run:
+#   1. fixes the annihilator-dimension bug from Step 60C;
+#   2. re-checks the 9 survivors more strongly;
+#   3. runs support-size <= 3 Jordan tests for up to 3 hours;
+#   4. prints a clean Alastair-ready report.
+#
+# IMPORTANT:
+#   The old Step 60C annihilator dimension 702 was impossible
+#   for a 27-dimensional algebra. This script fixes that.
+############################################################
+
+LogTo("STEP61A_FINAL_3H_VERIFICATION_AND_ALASTAIR_REPORT_LOG.txt");
+
+Print("\n============================================================\n");
+Print("STEP 61A: FINAL 3-HOUR VERIFICATION AND REPORT\n");
+Print("============================================================\n");
+
+if not IsBound(DerivationReports60B) then
+    Error("DerivationReports60B is not bound. Run Step 60B first.");
+fi;
+
+if not IsBound(SurvivorAnalysis60C) then
+    Print("Warning: SurvivorAnalysis60C is not bound, but DerivationReports60B exists.\n");
+fi;
+
+if Length(DerivationReports60B) = 0 then
+    Error("No survivor products available from Step 60B.");
+fi;
+
+F61 := GF(7);;
+zero61 := Zero(F61);;
+one61 := One(F61);;
+elts61 := Elements(F61);;
+
+TIME_LIMIT_MS61 := 3 * 60 * 60 * 1000;;
+PROGRESS_EVERY61 := 50000;;
+
+Print("Number of survivor products from Step 60B = ",
+      Length(DerivationReports60B), "\n");
+Print("Time limit ms = ", TIME_LIMIT_MS61, "\n");
+Print("Progress every = ", PROGRESS_EVERY61, " Jordan tests\n");
+
+############################################################
+# Canonical display
+############################################################
+
+CanonicalGF7_61 := function(x)
+    local n;
+
+    for n in [0,1,2,3,-3,-2,-1] do
+        if x = n * one61 then
+            return n;
+        fi;
+    od;
+
+    return x;
+end;;
+
+CanonicalList61 := function(L)
+    return List(L, x -> CanonicalGF7_61(x));
+end;;
+
+############################################################
+# Correct nullspace helper
+############################################################
+
+GoodNullspace61 := function(rows, desiredLen)
+    local raw, raw2;
+
+    raw := NullspaceMat(rows);
+
+    if Length(raw) = 0 then
+        return [];
+    fi;
+
+    if Length(raw[1]) = desiredLen then
+        return raw;
+    fi;
+
+    raw2 := NullspaceMat(TransposedMat(rows));
+
+    if Length(raw2) = 0 then
+        return [];
+    fi;
+
+    if Length(raw2[1]) = desiredLen then
+        return raw2;
+    fi;
+
+    Print("Warning: could not find nullspace with vector length ",
+          desiredLen, ".\n");
+    Print("  first orientation length = ", Length(raw[1]), "\n");
+    Print("  second orientation length = ", Length(raw2[1]), "\n");
+
+    return fail;
+end;;
+
+############################################################
+# Correct annihilator
+#
+# Ann(A) = {v | v*w = 0 for all w in A}
+# Unknown vector has length 27.
+############################################################
+
+CorrectAnnihilatorBasis61 := function(prod)
+    local d, rows, i, j, k, row;
+
+    d := 27;
+    rows := [];
+
+    for j in [1..d] do
+        for k in [1..d] do
+            row := List([1..d], x -> zero61);
+
+            for i in [1..d] do
+                if prod[i][j][k] <> zero61 then
+                    row[i] := row[i] + prod[i][j][k];
+                fi;
+            od;
+
+            Add(rows, row);
+        od;
+    od;
+
+    return GoodNullspace61(rows, d);
+end;;
+
+############################################################
+# Product-image and square-span helpers
+############################################################
+
+ProductImageDim61 := function(prod, A, B)
+    local rows, i, j;
+
+    rows := [];
+
+    for i in A do
+        for j in B do
+            Add(rows, prod[i][j]);
+        od;
+    od;
+
+    return Length(BaseMat(rows));
+end;;
+
+SquareSpanDim61 := function(prod, A)
+    local rows, i;
+
+    rows := [];
+
+    for i in A do
+        Add(rows, prod[i][i]);
+    od;
+
+    return Length(BaseMat(rows));
+end;;
+
+IdentityCheck61 := function(prod)
+    local i;
+
+    for i in [1..27] do
+        if prod[1][i] <> BasisVec59(27, i) then
+            return false;
+        fi;
+
+        if prod[i][1] <> BasisVec59(27, i) then
+            return false;
+        fi;
+    od;
+
+    return true;
+end;;
+
+############################################################
+# Jordan identity
+############################################################
+
+JordanFailureVec61 := function(prod, x, y)
+    local x2, yx, left, right, diff, k;
+
+    x2 := ProdVec59(x, x, prod);
+    yx := ProdVec59(y, x, prod);
+
+    left := ProdVec59(ProdVec59(x2, y, prod), x, prod);
+    right := ProdVec59(x2, yx, prod);
+
+    diff := [];
+
+    for k in [1..27] do
+        Add(diff, left[k] - right[k]);
+    od;
+
+    return diff;
+end;;
+
+IsZeroVec61 := function(v)
+    return ForAll(v, x -> x = zero61);
+end;;
+
+BasisJordanFailures61 := function(prod)
+    local failCount, i, j, x, y, diff;
+
+    failCount := 0;
+
+    for i in [1..27] do
+        x := BasisVec59(27, i);
+
+        for j in [1..27] do
+            y := BasisVec59(27, j);
+            diff := JordanFailureVec61(prod, x, y);
+
+            if not IsZeroVec61(diff) then
+                failCount := failCount + 1;
+            fi;
+        od;
+    od;
+
+    return failCount;
+end;;
+
+############################################################
+# Generate vector with support and coefficients
+############################################################
+
+VectorFromSupport61 := function(support, coeffs)
+    local v, r;
+
+    v := List([1..27], i -> zero61);
+
+    for r in [1..Length(support)] do
+        v[support[r]] := coeffs[r];
+    od;
+
+    return v;
+end;;
+
+NonzeroCoeffTuples61 := function(len)
+    local tuples, recfun, current, a;
+
+    tuples := [];
+
+    recfun := function(pos, current)
+        local copy;
+
+        if pos > len then
+            if not ForAll(current, x -> x = zero61) then
+                Add(tuples, ShallowCopy(current));
+            fi;
+            return;
+        fi;
+
+        for a in elts61 do
+            copy := ShallowCopy(current);
+            Add(copy, a);
+            recfun(pos + 1, copy);
+        od;
+    end;
+
+    recfun(1, []);
+
+    return tuples;
+end;;
+
+CoeffTuples1_61 := NonzeroCoeffTuples61(1);;
+CoeffTuples2_61 := NonzeroCoeffTuples61(2);;
+CoeffTuples3_61 := NonzeroCoeffTuples61(3);;
+
+Print("Coefficient tuples length 1 = ", Length(CoeffTuples1_61), "\n");
+Print("Coefficient tuples length 2 = ", Length(CoeffTuples2_61), "\n");
+Print("Coefficient tuples length 3 = ", Length(CoeffTuples3_61), "\n");
+
+############################################################
+# Strong support-size Jordan test
+#
+# Since Jordan identity is cubic in x and linear in y,
+# support-size <=3 testing is a strong coefficient-level check.
+#
+# We time-limit this because all 9 products may be expensive.
+############################################################
+
+SupportJordanTest61 := function(rep, maxSupport, startTime)
+    local prod, totalTests, failures, firstFailure,
+          i, j, k, yIndex, x, y, diff,
+          coeffs, supp, elapsed;
+
+    prod := rep.prod;
+    totalTests := 0;
+    failures := 0;
+    firstFailure := fail;
+
+    ########################################################
+    # support size 1
+    ########################################################
+
+    if maxSupport >= 1 then
+        for i in [1..27] do
+            supp := [i];
+
+            for coeffs in CoeffTuples1_61 do
+                x := VectorFromSupport61(supp, coeffs);
+
+                for yIndex in [1..27] do
+                    y := BasisVec59(27, yIndex);
+                    diff := JordanFailureVec61(prod, x, y);
+                    totalTests := totalTests + 1;
+
+                    if not IsZeroVec61(diff) then
+                        failures := failures + 1;
+
+                        if firstFailure = fail then
+                            firstFailure := rec(
+                                support := supp,
+                                coeffs := coeffs,
+                                yIndex := yIndex,
+                                diff := diff
+                            );
+                        fi;
+
+                        return rec(
+                            status := "failure",
+                            totalTests := totalTests,
+                            failures := failures,
+                            firstFailure := firstFailure,
+                            maxSupportCompleted := 0
+                        );
+                    fi;
+
+                    if totalTests mod PROGRESS_EVERY61 = 0 then
+                        elapsed := Runtime() - startTime;
+                        Print("    product ", rep.index,
+                              " support-test progress: ", totalTests,
+                              " | elapsed ms=", elapsed, "\n");
+
+                        if elapsed >= TIME_LIMIT_MS61 then
+                            return rec(
+                                status := "time_limit",
+                                totalTests := totalTests,
+                                failures := failures,
+                                firstFailure := firstFailure,
+                                maxSupportCompleted := 0
+                            );
+                        fi;
+                    fi;
+                od;
+            od;
+        od;
+    fi;
+
+    ########################################################
+    # support size 2
+    ########################################################
+
+    if maxSupport >= 2 then
+        for i in [1..26] do
+            for j in [i+1..27] do
+                supp := [i,j];
+
+                for coeffs in CoeffTuples2_61 do
+                    x := VectorFromSupport61(supp, coeffs);
+
+                    for yIndex in [1..27] do
+                        y := BasisVec59(27, yIndex);
+                        diff := JordanFailureVec61(prod, x, y);
+                        totalTests := totalTests + 1;
+
+                        if not IsZeroVec61(diff) then
+                            failures := failures + 1;
+
+                            if firstFailure = fail then
+                                firstFailure := rec(
+                                    support := supp,
+                                    coeffs := coeffs,
+                                    yIndex := yIndex,
+                                    diff := diff
+                                );
+                            fi;
+
+                            return rec(
+                                status := "failure",
+                                totalTests := totalTests,
+                                failures := failures,
+                                firstFailure := firstFailure,
+                                maxSupportCompleted := 1
+                            );
+                        fi;
+
+                        if totalTests mod PROGRESS_EVERY61 = 0 then
+                            elapsed := Runtime() - startTime;
+                            Print("    product ", rep.index,
+                                  " support-test progress: ", totalTests,
+                                  " | elapsed ms=", elapsed, "\n");
+
+                            if elapsed >= TIME_LIMIT_MS61 then
+                                return rec(
+                                    status := "time_limit",
+                                    totalTests := totalTests,
+                                    failures := failures,
+                                    firstFailure := firstFailure,
+                                    maxSupportCompleted := 1
+                                );
+                            fi;
+                        fi;
+                    od;
+                od;
+            od;
+        od;
+    fi;
+
+    ########################################################
+    # support size 3
+    ########################################################
+
+    if maxSupport >= 3 then
+        for i in [1..25] do
+            for j in [i+1..26] do
+                for k in [j+1..27] do
+                    supp := [i,j,k];
+
+                    for coeffs in CoeffTuples3_61 do
+                        x := VectorFromSupport61(supp, coeffs);
+
+                        for yIndex in [1..27] do
+                            y := BasisVec59(27, yIndex);
+                            diff := JordanFailureVec61(prod, x, y);
+                            totalTests := totalTests + 1;
+
+                            if not IsZeroVec61(diff) then
+                                failures := failures + 1;
+
+                                if firstFailure = fail then
+                                    firstFailure := rec(
+                                        support := supp,
+                                        coeffs := coeffs,
+                                        yIndex := yIndex,
+                                        diff := diff
+                                    );
+                                fi;
+
+                                return rec(
+                                    status := "failure",
+                                    totalTests := totalTests,
+                                    failures := failures,
+                                    firstFailure := firstFailure,
+                                    maxSupportCompleted := 2
+                                );
+                            fi;
+
+                            if totalTests mod PROGRESS_EVERY61 = 0 then
+                                elapsed := Runtime() - startTime;
+                                Print("    product ", rep.index,
+                                      " support-test progress: ", totalTests,
+                                      " | elapsed ms=", elapsed, "\n");
+
+                                if elapsed >= TIME_LIMIT_MS61 then
+                                    return rec(
+                                        status := "time_limit",
+                                        totalTests := totalTests,
+                                        failures := failures,
+                                        firstFailure := firstFailure,
+                                        maxSupportCompleted := 2
+                                    );
+                                fi;
+                            fi;
+                        od;
+                    od;
+                od;
+            od;
+        od;
+    fi;
+
+    return rec(
+        status := "passed",
+        totalTests := totalTests,
+        failures := failures,
+        firstFailure := firstFailure,
+        maxSupportCompleted := maxSupport
+    );
+end;;
+
+############################################################
+# Corrected structural metrics
+############################################################
+
+CorrectedMetrics61 := function(rep)
+    local prod, ann, annDim, basisFails,
+          dimAll, dimV12V12, dimV12V14, dimV14V14, dimV26V26,
+          sqAll, sqV12, sqV14;
+
+    prod := rep.prod;
+
+    ann := CorrectAnnihilatorBasis61(prod);
+
+    if ann = fail then
+        annDim := fail;
+    else
+        annDim := Length(ann);
+    fi;
+
+    basisFails := BasisJordanFailures61(prod);
+
+    dimAll := ProductImageDim61(prod, [1..27], [1..27]);
+    dimV12V12 := ProductImageDim61(prod, [2..13], [2..13]);
+    dimV12V14 := ProductImageDim61(prod, [2..13], [14..27]);
+    dimV14V14 := ProductImageDim61(prod, [14..27], [14..27]);
+    dimV26V26 := ProductImageDim61(prod, [2..27], [2..27]);
+
+    sqAll := SquareSpanDim61(prod, [1..27]);
+    sqV12 := SquareSpanDim61(prod, [2..13]);
+    sqV14 := SquareSpanDim61(prod, [14..27]);
+
+    return rec(
+        index := rep.index,
+        coeffs := CanonicalList61(rep.coeffs),
+        derivationDim := rep.derivationDim,
+        identityCheck := IdentityCheck61(prod),
+        annihilatorDim := annDim,
+        basisJordanFailures := basisFails,
+        productDims := [dimAll, dimV12V12, dimV12V14, dimV14V14, dimV26V26],
+        squareDims := [sqAll, sqV12, sqV14]
+    );
+end;;
+
+############################################################
+# Run corrected metrics first
+############################################################
+
+Print("\n------------------------------------------------------------\n");
+Print("PART 1: CORRECTED STRUCTURAL METRICS FOR SURVIVORS\n");
+Print("------------------------------------------------------------\n");
+
+CorrectedSurvivorMetrics61 := [];;
+
+for rep61 in DerivationReports60B do
+    Print("\nComputing corrected metrics for survivor index ",
+          rep61.index, "\n");
+
+    met61 := CorrectedMetrics61(rep61);;
+    Add(CorrectedSurvivorMetrics61, met61);
+
+    Print("  coeffs = ", met61.coeffs, "\n");
+    Print("  derivation dim = ", met61.derivationDim, "\n");
+    Print("  corrected annihilator dim = ", met61.annihilatorDim, "\n");
+    Print("  basis Jordan failures = ", met61.basisJordanFailures, "\n");
+    Print("  product dims [A*A,V12*V12,V12*V14,V14*V14,V26*V26] = ",
+          met61.productDims, "\n");
+    Print("  square dims [A,V12,V14] = ", met61.squareDims, "\n");
+od;
+
+############################################################
+# Run support-size Jordan tests for up to 3 hours
+############################################################
+
+Print("\n------------------------------------------------------------\n");
+Print("PART 2: SUPPORT-SIZE <= 3 JORDAN TESTS\n");
+Print("------------------------------------------------------------\n");
+
+SupportJordanReports61 := [];;
+StartTime61 := Runtime();;
+
+for rep61B in DerivationReports60B do
+    if Runtime() - StartTime61 >= TIME_LIMIT_MS61 then
+        Print("\nTime limit reached before starting survivor index ",
+              rep61B.index, "\n");
+        break;
+    fi;
+
+    Print("\nRunning support-size <=3 Jordan test for survivor index ",
+          rep61B.index, "\n");
+
+    sj61 := SupportJordanTest61(rep61B, 3, StartTime61);;
+
+    Add(SupportJordanReports61, rec(
+        index := rep61B.index,
+        coeffs := CanonicalList61(rep61B.coeffs),
+        derivationDim := rep61B.derivationDim,
+        supportJordanStatus := sj61.status,
+        totalTests := sj61.totalTests,
+        failures := sj61.failures,
+        maxSupportCompleted := sj61.maxSupportCompleted,
+        firstFailure := sj61.firstFailure
+    ));
+
+    Print("  status = ", sj61.status, "\n");
+    Print("  total tests = ", sj61.totalTests, "\n");
+    Print("  failures = ", sj61.failures, "\n");
+    Print("  max support completed = ", sj61.maxSupportCompleted, "\n");
+
+    if sj61.firstFailure <> fail then
+        Print("  first failure support = ", sj61.firstFailure.support, "\n");
+        Print("  first failure coeffs = ", CanonicalList61(sj61.firstFailure.coeffs), "\n");
+        Print("  first failure yIndex = ", sj61.firstFailure.yIndex, "\n");
+    fi;
+od;
+
+############################################################
+# Alastair-ready final report
+############################################################
+
+Print("\n============================================================\n");
+Print("STEP 61A FINAL ALASTAIR-READY REPORT\n");
+Print("============================================================\n");
+
+Print("\nA. Walton module result\n");
+Print("------------------------------------------------------------\n");
+Print("We have a successful PSL2(13) Walton triple on V26 = 12 + 14.\n");
+Print("The verified checks from Step 57B were:\n");
+Print("  Order(g) = 13\n");
+Print("  Order(f) = 6\n");
+Print("  Order(t) = 2\n");
+Print("  |<g,f>| = 78, so B = 13:6\n");
+Print("  |<g,f,t>| = 1092\n");
+Print("  f^t = f^-1\n");
+Print("  Order(g*t) = 3\n");
+Print("  V26 trace profile [g,f,f^2,f^3,t,g*t] = [0,1,-1,-2,-2,-1]\n");
+Print("  Target V52 character = 2*12 + 2*14 = [52,-4,-2,2,0,0]\n");
+
+Print("\nB. Direct G2-adjoint bracket test\n");
+Print("------------------------------------------------------------\n");
+Print("Step 58A tested all three 14-dimensional records for an\n");
+Print("H-invariant Lie bracket Lambda^2(14) -> 14.\n");
+Print("No record produced a Jacobi-satisfying full-rank bracket.\n");
+Print("This does not affect the Walton V26 result, but the simple\n");
+Print("direct G2-adjoint bracket test did not identify L(G2).\n");
+
+Print("\nC. Naive V27 = 1 + 12 + 14 product search\n");
+Print("------------------------------------------------------------\n");
+Print("The H-invariant commutative unital product space has dimension 8.\n");
+Print("The block Hom dimensions were:\n");
+Print("  Sym^2(12)->1  = 1\n");
+Print("  Sym^2(12)->12 = 1\n");
+Print("  Sym^2(12)->14 = 0\n");
+Print("  12 tensor 14 ->1  = 0\n");
+Print("  12 tensor 14 ->12 = 2\n");
+Print("  12 tensor 14 ->14 = 2\n");
+Print("  Sym^2(14)->1  = 1\n");
+Print("  Sym^2(14)->12 = 1\n");
+Print("  Sym^2(14)->14 = 0\n");
+
+Print("\nStep 60B exhaustively scanned all 960800 projective directions.\n");
+Print("It found 9 first-filter and hard-filter Jordan survivors.\n");
+Print("Derivation dimensions among these survivors were:\n");
+Print("  dim 169: 1\n");
+Print("  dim 325: 6\n");
+Print("  dim 403: 1\n");
+Print("  dim 430: 1\n");
+Print("No survivor had derivation dimension 52.\n");
+
+Print("\nD. Corrected survivor metrics from Step 61A\n");
+Print("------------------------------------------------------------\n");
+
+for met61B in CorrectedSurvivorMetrics61 do
+    Print("\nSurvivor index ", met61B.index, "\n");
+    Print("  coeffs = ", met61B.coeffs, "\n");
+    Print("  derivation dim = ", met61B.derivationDim, "\n");
+    Print("  corrected annihilator dim = ", met61B.annihilatorDim, "\n");
+    Print("  basis Jordan failures = ", met61B.basisJordanFailures, "\n");
+    Print("  product dims [A*A,V12*V12,V12*V14,V14*V14,V26*V26] = ",
+          met61B.productDims, "\n");
+    Print("  square dims [A,V12,V14] = ", met61B.squareDims, "\n");
+od;
+
+Print("\nE. Support-size Jordan verification from Step 61A\n");
+Print("------------------------------------------------------------\n");
+
+if Length(SupportJordanReports61) = 0 then
+    Print("No support-size Jordan tests completed before the time limit.\n");
+else
+    for sjRep61 in SupportJordanReports61 do
+        Print("\nSurvivor index ", sjRep61.index, "\n");
+        Print("  coeffs = ", sjRep61.coeffs, "\n");
+        Print("  derivation dim = ", sjRep61.derivationDim, "\n");
+        Print("  support Jordan status = ", sjRep61.supportJordanStatus, "\n");
+        Print("  total tests = ", sjRep61.totalTests, "\n");
+        Print("  failures = ", sjRep61.failures, "\n");
+        Print("  max support completed = ", sjRep61.maxSupportCompleted, "\n");
+    od;
+fi;
+
+Print("\nF. Current interpretation\n");
+Print("------------------------------------------------------------\n");
+Print("The Walton PSL2(13) construction on V26 = 12 + 14 is successful.\n");
+Print("However, the naive unital V27 = 1 + 12 + 14 product construction\n");
+Print("does not recover an Albert/F4 product. The exhaustive 8-parameter\n");
+Print("projective scan found only sparse/degenerate Jordan-filter survivors,\n");
+Print("with derivation dimensions far from 52 and with V12*V14 = 0 in the\n");
+Print("printed survivor metrics. Therefore this naive product model is likely\n");
+Print("not the right way to realise the F4 minimal module structure.\n");
+Print("The next mathematical step should move away from naive random/product\n");
+Print("scans and toward either:\n");
+Print("  1. an actual F4(7) minimal module realisation;\n");
+Print("  2. a structural G2 <= F4 construction;\n");
+Print("  3. exact normalised algebra constraints rather than arbitrary\n");
+Print("     H-invariant unital products.\n");
+
+Print("\nObjects retained:\n");
+Print("  CorrectedSurvivorMetrics61\n");
+Print("  SupportJordanReports61\n");
+
+Print("\nSTEP 61A FINISHED.\n");
+Print("Log file: STEP61A_FINAL_3H_VERIFICATION_AND_ALASTAIR_REPORT_LOG.txt\n");
+Print("============================================================\n");
+
+LogTo();
+

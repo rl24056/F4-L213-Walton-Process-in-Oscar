@@ -1,0 +1,1657 @@
+############################################################
+# STEP 62 ALL-IN-ONE:
+# FRESH START ON NEW LAPTOP / OSCAR-GAP
+#
+# Goal:
+#   Rebuild the successful 26-dimensional Walton model
+#
+#       V26 = 12 + 14
+#
+#   Then build End(V26), decompose it with MTX, and search
+#   for the target 52-dimensional H-stable object with type
+#
+#       V52 = 2*12 + 2*14.
+#
+# Main stages:
+#   62A  Rebuild abstract PSL2(13) Walton triple and V26
+#   62C  Character bridge V26 -> End(V26)
+#   62D  Diagnose available MTX / MeatAxe tools
+#   62E  Build 676-dimensional End(V26) module and decompose
+#   62F  Find 52-dimensional composition-series windows
+#   62G  Trace-test those 52-dimensional windows
+#   62H  Search actual minimal submodules / socle / optional all submodules
+#
+# IMPORTANT:
+#   This is intended for a fresh GAP session.
+#   If you are in a break loop, type:
+#
+#       quit;
+#
+#   first.
+############################################################
+
+LogTo("STEP62_ALL_IN_ONE_LOG.txt");
+
+Print("\n============================================================\n");
+Print("STEP 62 ALL-IN-ONE: V26 -> END(V26) -> POSSIBLE V52\n");
+Print("============================================================\n");
+
+############################################################
+# GLOBAL RUN FLAGS
+############################################################
+
+# Composition factors and composition-series bases are the main path.
+RUN_BASES_CS62 := true;;
+
+# Minimal submodules can be heavy but useful on the new M-chip Mac.
+RUN_MINIMAL_SUBMODULES62 := true;;
+
+# Socle only runs if MTX.BasisSocle exists.
+RUN_SOCLE62 := true;;
+
+# This can be very heavy. Leave false for first clean run.
+# Change to true only if the minimal/socle stage finishes and you want more.
+RUN_ALL_SUBMODULES62 := false;;
+
+# Optional old random gl26 seed search. This was already not promising,
+# so default is false.
+RUN_RANDOM_GL26_SEED_SEARCH62 := false;;
+
+############################################################
+# LOAD PACKAGES
+############################################################
+
+LoadPackage("ctbllib");
+
+F62 := GF(7);;
+
+############################################################
+# BASIC HELPERS
+############################################################
+
+SignedGF7_62 := function(x)
+    local n;
+    for n in [-3..3] do
+        if x = n * One(F62) then
+            return n;
+        fi;
+    od;
+    return x;
+end;;
+
+TraceMat62 := function(A)
+    local s, i, d;
+    d := Length(A);
+    s := Zero(F62);
+    for i in [1..d] do
+        s := s + A[i][i];
+    od;
+    return s;
+end;;
+
+TraceSigned62 := function(A)
+    return SignedGF7_62(TraceMat62(A));
+end;;
+
+MatDim62 := function(A)
+    return Length(A);
+end;;
+
+PrintListWithLabel62 := function(label, L)
+    Print(label, " = ", L, "\n");
+end;;
+
+############################################################
+# STEP 62A PART 1:
+# BUILD ABSTRACT PSL2(13) WALTON TRIPLE
+############################################################
+
+Print("\n------------------------------------------------------------\n");
+Print("STEP 62A PART 1: BUILD ABSTRACT PSL2(13) WALTON TRIPLE\n");
+Print("------------------------------------------------------------\n");
+
+H62 := PSL(2,13);;
+
+Print("|H62| = ", Size(H62), "\n");
+
+ActionExponent62 := function(g, x)
+    local k;
+    for k in [0..12] do
+        if g^x = g^k then
+            return k;
+        fi;
+    od;
+    return fail;
+end;;
+
+g62 := First(Elements(H62), x -> Order(x) = 13);;
+P62 := Group(g62);;
+N62 := Normalizer(H62, P62);;
+
+Print("Order(g62) = ", Order(g62), "\n");
+Print("|N_H(<g>)| = ", Size(N62), "\n");
+
+FCands62 := Filtered(Elements(N62),
+    x -> Order(x) = 6 and ActionExponent62(g62, x) = 10);;
+
+Print("Number of f-candidates acting by exponent 10 = ",
+      Length(FCands62), "\n");
+
+if Length(FCands62) = 0 then
+    Error("No f-candidate found.");
+fi;
+
+f62 := FCands62[1];;
+B62 := Group(g62, f62);;
+
+Print("Order(f62) = ", Order(f62), "\n");
+Print("Action exponent of f62 on <g62> = ",
+      ActionExponent62(g62, f62), "\n");
+Print("|B62=<g,f>| = ", Size(B62), "\n");
+
+BElts62 := [];;
+for i62 in [0..12] do
+    for j62 in [0..5] do
+        Add(BElts62, rec(i := i62, j := j62, elt := g62^i62 * f62^j62));
+    od;
+od;
+
+Print("Normal forms g^i f^j stored = ", Length(BElts62), "\n");
+
+WitnessPairs62 := function(g, f, t)
+    local out, i, j;
+    out := [];
+    for i in [0..12] do
+        for j in [0..5] do
+            if Order(g^i * f^j * t) = 3 then
+                Add(out, [i,j]);
+            fi;
+        od;
+    od;
+    return out;
+end;;
+
+ExactExternalT62 := [];;
+
+for x62 in Elements(H62) do
+    if Order(x62) = 2
+       and not x62 in B62
+       and ActionExponent62(g62, x62) = fail
+       and f62^x62 = f62^-1
+       and Size(Group(g62, f62, x62)) = 1092 then
+
+        Add(ExactExternalT62,
+            rec(t := x62,
+                witnesses := WitnessPairs62(g62, f62, x62)));
+    fi;
+od;
+
+Print("Exact-inverting external t-candidates = ",
+      Length(ExactExternalT62), "\n");
+
+if Length(ExactExternalT62) = 0 then
+    Error("No exact-inverting external t found.");
+fi;
+
+Print("\nThe exact-inverting external t's and witnesses:\n");
+for i62 in [1..Length(ExactExternalT62)] do
+    Print("  t#", i62, " witnesses = ",
+          ExactExternalT62[i62].witnesses, "\n");
+od;
+
+chosenRec62 := First(ExactExternalT62,
+    r -> [1,0] in r.witnesses);;
+
+if chosenRec62 = fail then
+    chosenRec62 := ExactExternalT62[1];;
+    Print("No t with witness [1,0] found; using t#1.\n");
+else
+    Print("Using the t with simple witness [1,0], so Order(g*t)=3.\n");
+fi;
+
+t62 := chosenRec62.t;;
+
+Print("\nChosen Walton t checks:\n");
+Print("  Order(t62) = ", Order(t62), "\n");
+Print("  f62^t62 = f62^-1 ? ", f62^t62 = f62^-1, "\n");
+Print("  t62 in B62? ", t62 in B62, "\n");
+Print("  Action exponent of t62 on <g62> = ",
+      ActionExponent62(g62, t62), "\n");
+Print("  Order(g62*t62) = ", Order(g62*t62), "\n");
+Print("  |<g,f,t>| = ", Size(Group(g62,f62,t62)), "\n");
+
+############################################################
+# STEP 62A PART 2:
+# BUILD V26 = 12 + TARGET 14 OVER GF(7)
+############################################################
+
+Print("\n------------------------------------------------------------\n");
+Print("STEP 62A PART 2: BUILD V26 = 12 + TARGET 14 OVER GF(7)\n");
+Print("------------------------------------------------------------\n");
+
+mods62 := IrreducibleModules(H62, F62);;
+
+if Length(mods62) = 2
+   and IsList(mods62[1])
+   and IsList(mods62[2])
+   and ForAll(mods62[2], x -> IsRecord(x)) then
+
+    sourceGens62 := mods62[1];;
+    moduleRecords62 := mods62[2];;
+
+else
+    sourceGens62 := GeneratorsOfGroup(H62);;
+    moduleRecords62 := mods62;;
+fi;
+
+Print("Number of module records = ", Length(moduleRecords62), "\n");
+Print("Number of source generators = ", Length(sourceGens62), "\n");
+
+GetModuleGens62 := function(r)
+    if IsRecord(r) then
+        if IsBound(r.generators) then
+            return r.generators;
+        fi;
+        if IsBound(r.gens) then
+            return r.gens;
+        fi;
+        Print("Available record fields = ", RecNames(r), "\n");
+        Error("Could not find generator matrices in this module record.");
+    fi;
+
+    if IsList(r) then
+        return r;
+    fi;
+
+    Error("Unknown module record format.");
+end;;
+
+MakeHom62 := function(r)
+    local mats, Gm;
+    mats := GetModuleGens62(r);
+    Gm := Group(mats);
+    return GroupHomomorphismByImagesNC(H62, Gm, sourceGens62, mats);
+end;;
+
+ProfileRecord62 := function(r)
+    local hom, mg, mf, mt, prof;
+
+    hom := MakeHom62(r);
+
+    mg := Image(hom, g62);
+    mf := Image(hom, f62);
+    mt := Image(hom, t62);
+
+    prof := [
+        TraceSigned62(mg),
+        TraceSigned62(mf),
+        TraceSigned62(mf^2),
+        TraceSigned62(mf^3),
+        TraceSigned62(mt),
+        TraceSigned62(mg*mt)
+    ];
+
+    return rec(
+        hom := hom,
+        dim := MatDim62(mg),
+        profile := prof,
+        g := mg,
+        f := mf,
+        t := mt
+    );
+end;;
+
+Profiles62 := [];;
+
+for i62 in [1..Length(moduleRecords62)] do
+    Add(Profiles62, ProfileRecord62(moduleRecords62[i62]));
+    Print("Record #", i62,
+          " dim=", Profiles62[i62].dim,
+          " profile [g,f,f^2,f^3,t,g*t] = ",
+          Profiles62[i62].profile, "\n");
+od;
+
+target12Index62 := fail;;
+target14Index62 := fail;;
+
+for i62 in [1..Length(Profiles62)] do
+    if Profiles62[i62].dim = 12
+       and Profiles62[i62].profile = [-1,0,0,0,0,0] then
+        target12Index62 := i62;
+    fi;
+
+    if Profiles62[i62].dim = 14
+       and Profiles62[i62].profile = [1,1,-1,-2,-2,-1] then
+        target14Index62 := i62;
+    fi;
+od;
+
+if target12Index62 = fail then
+    target12Index62 := First([1..Length(Profiles62)],
+        i -> Profiles62[i].dim = 12);
+    Print("WARNING: exact 12 profile not found; using first 12-dimensional record.\n");
+fi;
+
+if target14Index62 = fail then
+    target14Index62 := First([1..Length(Profiles62)],
+        i -> Profiles62[i].dim = 14);
+    Print("WARNING: exact target 14 profile not found; using first 14-dimensional record.\n");
+fi;
+
+Print("\nChosen V12 record = #", target12Index62, "\n");
+Print("Chosen V14 record = #", target14Index62, "\n");
+
+R12_62 := Profiles62[target12Index62];;
+R14_62 := Profiles62[target14Index62];;
+
+BlockDiag2_62 := function(A, B)
+    local d1, d2, z, M, i, j;
+
+    d1 := Length(A);
+    d2 := Length(B);
+    z := Zero(F62);
+
+    M := List([1..d1+d2], i -> List([1..d1+d2], j -> z));
+
+    for i in [1..d1] do
+        for j in [1..d1] do
+            M[i][j] := A[i][j];
+        od;
+    od;
+
+    for i in [1..d2] do
+        for j in [1..d2] do
+            M[d1+i][d1+j] := B[i][j];
+        od;
+    od;
+
+    return M;
+end;;
+
+g26_62 := BlockDiag2_62(R12_62.g, R14_62.g);;
+f26_62 := BlockDiag2_62(R12_62.f, R14_62.f);;
+t26_62 := BlockDiag2_62(R12_62.t, R14_62.t);;
+
+B26_62 := Group(g26_62, f26_62);;
+H26_62 := Group(g26_62, f26_62, t26_62);;
+
+V26Profile62 := [
+    TraceSigned62(g26_62),
+    TraceSigned62(f26_62),
+    TraceSigned62(f26_62^2),
+    TraceSigned62(f26_62^3),
+    TraceSigned62(t26_62),
+    TraceSigned62(g26_62*t26_62)
+];;
+
+Print("\nV26 checks:\n");
+Print("  dim(V26) = ", Length(g26_62), "\n");
+Print("  Order(g26) = ", Order(g26_62), "\n");
+Print("  Order(f26) = ", Order(f26_62), "\n");
+Print("  Order(t26) = ", Order(t26_62), "\n");
+Print("  |<g26,f26>| = ", Size(B26_62), "\n");
+Print("  |<g26,f26,t26>| = ", Size(H26_62), "\n");
+Print("  f26^t26 = f26^-1 ? ", f26_62^t26_62 = f26_62^-1, "\n");
+Print("  Order(g26*t26) = ", Order(g26_62*t26_62), "\n");
+Print("  V26 profile [g,f,f^2,f^3,t,g*t] = ", V26Profile62, "\n");
+
+############################################################
+# OPTIONAL OLD RANDOM GL26 SEED SEARCH
+############################################################
+
+if RUN_RANDOM_GL26_SEED_SEARCH62 then
+
+Print("\n------------------------------------------------------------\n");
+Print("OPTIONAL: OLD QUIET RANDOM gl26 SEED SEARCH\n");
+Print("------------------------------------------------------------\n");
+
+D62B := 26;;
+Id26_62B := IdentityMat(D62B, F62);;
+ActionGens62B := [g26_62, f26_62, t26_62];;
+
+MAX_CLOSURE_DIM62B := 120;;
+RANDOM_TRIALS62B := 500;;
+RANDOM_SUPPORT62B := 2;;
+
+Small12_62B := [];;
+Small14_62B := [];;
+Good52_62B := [];;
+SeedResults62B := [];;
+
+ZeroMat62B := function(d)
+    return NullMat(d, d, F62);
+end;;
+
+ElementaryMat62B := function(d, i, j)
+    local M;
+    M := ZeroMat62B(d);
+    M[i][j] := One(F62);
+    return M;
+end;;
+
+FlatMat62B := function(M)
+    local v, i;
+    v := [];
+    for i in [1..Length(M)] do
+        Append(v, M[i]);
+    od;
+    return v;
+end;;
+
+NonzeroVec62B := function(v)
+    return ForAny(v, x -> x <> Zero(F62));
+end;;
+
+RankRows62B := function(rows)
+    if Length(rows) = 0 then
+        return 0;
+    fi;
+    return RankMat(rows);
+end;;
+
+AddMatToState62B := function(state, M)
+    local v, newrows, r;
+
+    v := FlatMat62B(M);
+
+    if not NonzeroVec62B(v) then
+        return false;
+    fi;
+
+    newrows := ShallowCopy(state.basisVecs);
+    Add(newrows, v);
+
+    r := RankMat(newrows);
+
+    if r > state.rank then
+        Add(state.basisVecs, v);
+        Add(state.basisMats, M);
+        state.rank := r;
+        return true;
+    fi;
+
+    return false;
+end;;
+
+ClosureFromSeeds62B := function(seedMats, actionGens, maxDim)
+    local state, queue, q, M, A, Y;
+
+    state := rec(
+        basisVecs := [],
+        basisMats := [],
+        rank := 0,
+        overflow := false
+    );
+
+    queue := [];
+
+    for M in seedMats do
+        if AddMatToState62B(state, M) then
+            Add(queue, M);
+        fi;
+    od;
+
+    q := 1;
+
+    while q <= Length(queue) do
+        M := queue[q];
+        q := q + 1;
+
+        for A in actionGens do
+            Y := A^-1 * M * A;
+
+            if AddMatToState62B(state, Y) then
+                Add(queue, Y);
+            fi;
+
+            if state.rank > maxDim then
+                state.overflow := true;
+                return state;
+            fi;
+        od;
+    od;
+
+    return state;
+end;;
+
+InSpanRows62B := function(rows, v)
+    local newrows;
+
+    if not NonzeroVec62B(v) then
+        return true;
+    fi;
+
+    newrows := ShallowCopy(rows);
+    Add(newrows, v);
+
+    return RankMat(newrows) = RankRows62B(rows);
+end;;
+
+CommutatorMat62B := function(A, B)
+    return A*B - B*A;
+end;;
+
+BracketFailureCount62B := function(state, maxPairs)
+    local n, i, j, tested, C, v, fails;
+
+    n := Length(state.basisMats);
+    tested := 0;
+    fails := 0;
+
+    for i in [1..n] do
+        for j in [i+1..n] do
+            C := CommutatorMat62B(state.basisMats[i], state.basisMats[j]);
+            v := FlatMat62B(C);
+
+            if not InSpanRows62B(state.basisVecs, v) then
+                fails := fails + 1;
+            fi;
+
+            tested := tested + 1;
+
+            if maxPairs <> "all" and tested >= maxPairs then
+                return rec(tested := tested, failures := fails);
+            fi;
+        od;
+    od;
+
+    return rec(tested := tested, failures := fails);
+end;;
+
+AddSmallSubmodule62B := function(list, C)
+    local E, r;
+
+    for E in list do
+        r := RankMat(Concatenation(E.basisVecs, C.basisVecs));
+        if r = E.rank and C.rank = E.rank then
+            return false;
+        fi;
+    od;
+
+    Add(list, C);
+    return true;
+end;;
+
+TestSeedQuiet62B := function(label, M)
+    local C, quick, full;
+
+    C := ClosureFromSeeds62B([M], ActionGens62B, MAX_CLOSURE_DIM62B);
+
+    Add(SeedResults62B,
+        rec(label := label, dim := C.rank, overflow := C.overflow));
+
+    Print("Seed ", label,
+          " -> H-closure dim ", C.rank,
+          ", overflow=", C.overflow, "\n");
+
+    if C.rank = 12 then
+        if AddSmallSubmodule62B(Small12_62B, C) then
+            Print("  New 12-submodule. Total = ",
+                  Length(Small12_62B), "\n");
+        fi;
+    fi;
+
+    if C.rank = 14 then
+        if AddSmallSubmodule62B(Small14_62B, C) then
+            Print("  New 14-submodule. Total = ",
+                  Length(Small14_62B), "\n");
+        fi;
+    fi;
+
+    if C.rank = 52 then
+        Print("  Candidate 52-dimensional H-submodule found.\n");
+
+        quick := BracketFailureCount62B(C, 200);
+        Print("  Quick bracket test failures = ",
+              quick.failures, " / ", quick.tested, "\n");
+
+        if quick.failures = 0 then
+            full := BracketFailureCount62B(C, "all");
+            Print("  FULL bracket test failures = ",
+                  full.failures, " / ", full.tested, "\n");
+
+            if full.failures = 0 then
+                Print("  *** GOOD 52D BRACKET-CLOSED LIE SUBSPACE FOUND ***\n");
+                Add(Good52_62B, rec(label := label, space := C));
+            fi;
+        fi;
+    fi;
+
+    return true;
+end;;
+
+TestSeedQuiet62B("g-I", g26_62 - Id26_62B);;
+TestSeedQuiet62B("f-I", f26_62 - Id26_62B);;
+TestSeedQuiet62B("t-I", t26_62 - Id26_62B);;
+TestSeedQuiet62B("gt-I", g26_62*t26_62 - Id26_62B);;
+TestSeedQuiet62B("[g,f]", g26_62*f26_62 - f26_62*g26_62);;
+TestSeedQuiet62B("[g,t]", g26_62*t26_62 - t26_62*g26_62);;
+TestSeedQuiet62B("[f,t]", f26_62*t26_62 - t26_62*f26_62);;
+
+TestSeedQuiet62B("E(1,1)", ElementaryMat62B(D62B,1,1));;
+TestSeedQuiet62B("E(1,2)", ElementaryMat62B(D62B,1,2));;
+TestSeedQuiet62B("E(2,1)", ElementaryMat62B(D62B,2,1));;
+TestSeedQuiet62B("E(1,13)", ElementaryMat62B(D62B,1,13));;
+TestSeedQuiet62B("E(13,1)", ElementaryMat62B(D62B,13,1));;
+TestSeedQuiet62B("E(5,20)", ElementaryMat62B(D62B,5,20));;
+TestSeedQuiet62B("E(20,5)", ElementaryMat62B(D62B,20,5));;
+TestSeedQuiet62B("E(13,13)", ElementaryMat62B(D62B,13,13));;
+TestSeedQuiet62B("E(13,14)", ElementaryMat62B(D62B,13,14));;
+TestSeedQuiet62B("E(14,13)", ElementaryMat62B(D62B,14,13));;
+
+RandomNonzeroGF7_62B := function()
+    local x;
+    x := Zero(F62);
+    while x = Zero(F62) do
+        x := Random(F62);
+    od;
+    return x;
+end;;
+
+RandomSparseMat62B := function(d, support)
+    local M, k, i, j;
+
+    M := NullMat(d, d, F62);
+
+    for k in [1..support] do
+        i := Random([1..d]);
+        j := Random([1..d]);
+        M[i][j] := M[i][j] + RandomNonzeroGF7_62B();
+    od;
+
+    return M;
+end;;
+
+for i62 in [1..RANDOM_TRIALS62B] do
+
+    TestSeedQuiet62B(Concatenation("random-", String(i62)),
+                     RandomSparseMat62B(D62B, RANDOM_SUPPORT62B));;
+
+    if i62 mod 25 = 0 then
+        Print("Progress ", i62, " / ", RANDOM_TRIALS62B,
+              " | 12-submodules=", Length(Small12_62B),
+              " | 14-submodules=", Length(Small14_62B),
+              " | good52=", Length(Good52_62B), "\n");
+    fi;
+
+od;
+
+Print("\nOptional gl26 seed search finished.\n");
+
+fi;
+
+############################################################
+# STEP 62C:
+# CLEAN CHARACTER BRIDGE V26 -> END(V26)
+############################################################
+
+Print("\n------------------------------------------------------------\n");
+Print("STEP 62C: CLEAN CHARACTER BRIDGE V26 -> END(V26)\n");
+Print("------------------------------------------------------------\n");
+
+Print("Order(g26_62) = ", Order(g26_62), "\n");
+Print("Order(f26_62) = ", Order(f26_62), "\n");
+Print("Order(t26_62) = ", Order(t26_62), "\n");
+Print("|<g26,f26>| = ", Size(Group(g26_62,f26_62)), "\n");
+Print("|<g26,f26,t26>| = ", Size(Group(g26_62,f26_62,t26_62)), "\n");
+Print("f26^t26 = f26^-1 ? ", f26_62^t26_62 = f26_62^-1, "\n");
+Print("Order(g26*t26) = ", Order(g26_62*t26_62), "\n");
+
+V26Profile62C := [
+    TraceSigned62(g26_62),
+    TraceSigned62(f26_62),
+    TraceSigned62(f26_62^2),
+    TraceSigned62(f26_62^3),
+    TraceSigned62(t26_62),
+    TraceSigned62(g26_62*t26_62)
+];;
+
+PrintListWithLabel62(
+    "V26 profile [g,f,f^2,f^3,t,g*t]",
+    V26Profile62C
+);
+
+TargetDoubleProfile62C := List(V26Profile62C, x -> 2*x);;
+
+PrintListWithLabel62(
+    "Doubled target profile on V52",
+    TargetDoubleProfile62C
+);
+
+tbl62C := CharacterTable("L2(13)");;
+
+if tbl62C = fail then
+    tbl62C := CharacterTable("PSL(2,13)");;
+fi;
+
+if tbl62C = fail then
+    Error("Could not load character table L2(13) or PSL(2,13).");
+fi;
+
+bt62C := BrauerTable(tbl62C, 7);;
+
+if bt62C = fail then
+    Error("Could not load Brauer table mod 7.");
+fi;
+
+irr62C := Irr(bt62C);;
+orders62C := OrdersClassRepresentatives(bt62C);;
+
+Print("7-modular Brauer class orders = ", orders62C, "\n");
+Print("Number of irreducible Brauer characters = ", Length(irr62C), "\n");
+
+Print("\nIrreducible Brauer characters:\n");
+for i62 in [1..Length(irr62C)] do
+    Print("  irr#", i62, " = ", List(irr62C[i62], x -> x), "\n");
+od;
+
+FindCharByValues62C := function(vals)
+    local i;
+    for i in [1..Length(irr62C)] do
+        if List(irr62C[i], x -> x) = vals then
+            return rec(index := i, chi := irr62C[i]);
+        fi;
+    od;
+    return fail;
+end;;
+
+rec12_62C := FindCharByValues62C([12,0,0,0,-1,-1]);;
+rec14_62C := FindCharByValues62C([14,-2,-1,1,1,1]);;
+
+if rec12_62C = fail then
+    Error("Could not find the 12-dimensional Brauer character [12,0,0,0,-1,-1].");
+fi;
+
+if rec14_62C = fail then
+    Error("Could not find the target 14-dimensional Brauer character [14,-2,-1,1,1,1].");
+fi;
+
+Print("\nChosen Brauer characters:\n");
+Print("  12-character index = ", rec12_62C.index,
+      " values = ", List(rec12_62C.chi, x -> x), "\n");
+Print("  target 14-character index = ", rec14_62C.index,
+      " values = ", List(rec14_62C.chi, x -> x), "\n");
+
+chi12_62C := rec12_62C.chi;;
+chi14_62C := rec14_62C.chi;;
+
+nclasses62C := Length(orders62C);;
+
+chi26_62C := List([1..nclasses62C],
+    i -> chi12_62C[i] + chi14_62C[i]);;
+
+chi52target_62C := List([1..nclasses62C],
+    i -> 2*chi12_62C[i] + 2*chi14_62C[i]);;
+
+PrintListWithLabel62("Brauer character V26 = 12+14", chi26_62C);
+PrintListWithLabel62("Brauer target V52 = 2*12+2*14", chi52target_62C);
+
+coeff26_62C := SolutionMat(irr62C, chi26_62C);;
+coeff52_62C := SolutionMat(irr62C, chi52target_62C);;
+
+PrintListWithLabel62("Decomposition coefficients for V26", coeff26_62C);
+PrintListWithLabel62("Decomposition coefficients for target V52", coeff52_62C);
+
+invClass62C := [1..nclasses62C];;
+ord13pos62C := Filtered([1..nclasses62C], i -> orders62C[i] = 13);;
+
+if Length(ord13pos62C) = 2 then
+    invClass62C[ord13pos62C[1]] := ord13pos62C[2];
+    invClass62C[ord13pos62C[2]] := ord13pos62C[1];
+fi;
+
+Print("Inverse-class map used = ", invClass62C, "\n");
+
+chi26dual_62C := List([1..nclasses62C],
+    i -> chi26_62C[invClass62C[i]]);;
+
+chiEnd26_62C := List([1..nclasses62C],
+    i -> chi26_62C[i] * chi26dual_62C[i]);;
+
+PrintListWithLabel62("Brauer character End(V26)", chiEnd26_62C);
+
+coeffEnd26_62C := SolutionMat(irr62C, chiEnd26_62C);;
+
+PrintListWithLabel62("Decomposition coefficients for End(V26)", coeffEnd26_62C);
+
+CanFitTarget52_62C := true;;
+
+for i62 in [1..Length(coeff52_62C)] do
+    if coeffEnd26_62C[i62] < coeff52_62C[i62] then
+        CanFitTarget52_62C := false;
+    fi;
+od;
+
+Print("Character-theoretically End(V26) contains enough copies for V52 target? ",
+      CanFitTarget52_62C, "\n");
+
+if CanFitTarget52_62C then
+    residual62C := List([1..Length(coeffEnd26_62C)],
+        i -> coeffEnd26_62C[i] - coeff52_62C[i]);
+
+    PrintListWithLabel62(
+        "Residual End(V26) - target V52 coefficients",
+        residual62C
+    );
+fi;
+
+TraceEndSigned62C := function(A)
+    return SignedGF7_62(TraceMat62(A) * TraceMat62(A^-1));
+end;;
+
+EndProfile62C := [
+    TraceEndSigned62C(g26_62),
+    TraceEndSigned62C(f26_62),
+    TraceEndSigned62C(f26_62^2),
+    TraceEndSigned62C(f26_62^3),
+    TraceEndSigned62C(t26_62),
+    TraceEndSigned62C(g26_62*t26_62)
+];;
+
+PrintListWithLabel62(
+    "Matrix End(V26) trace profile [g,f,f^2,f^3,t,g*t]",
+    EndProfile62C
+);
+
+############################################################
+# STEP 62D-DIAG:
+# CHECK AVAILABLE GAP / MEATAXE MODULE TOOLS
+############################################################
+
+Print("\n------------------------------------------------------------\n");
+Print("STEP 62D-DIAG: CHECK AVAILABLE MODULE / MEATAXE TOOLS\n");
+Print("------------------------------------------------------------\n");
+
+Print("IsBound(g26_62) = ", IsBound(g26_62), "\n");
+Print("IsBound(f26_62) = ", IsBound(f26_62), "\n");
+Print("IsBound(t26_62) = ", IsBound(t26_62), "\n");
+
+if IsBound(g26_62) then
+    Print("dim(g26_62) = ", Length(g26_62), "\n");
+fi;
+
+Print("\nPackage checks:\n");
+
+Print("LoadPackage(\"meataxe\") = ");
+Print(LoadPackage("meataxe"), "\n");
+
+Print("LoadPackage(\"recog\") = ");
+Print(LoadPackage("recog"), "\n");
+
+Print("\nGlobal function checks:\n");
+
+Print("IsBound(GModuleByMats) = ", IsBound(GModuleByMats), "\n");
+Print("IsBound(GModuleByMatsNC) = ", IsBound(GModuleByMatsNC), "\n");
+Print("IsBound(CompositionFactors) = ", IsBound(CompositionFactors), "\n");
+Print("IsBound(CompositionSeries) = ", IsBound(CompositionSeries), "\n");
+Print("IsBound(ConstituentsOfModule) = ", IsBound(ConstituentsOfModule), "\n");
+Print("IsBound(Basis) = ", IsBound(Basis), "\n");
+Print("IsBound(InvariantSubspace) = ", IsBound(InvariantSubspace), "\n");
+Print("IsBound(Submodule) = ", IsBound(Submodule), "\n");
+Print("IsBound(NaturalModule) = ", IsBound(NaturalModule), "\n");
+
+Print("\nMTX namespace checks:\n");
+
+Print("IsBound(MTX) = ", IsBound(MTX), "\n");
+
+if IsBound(MTX) then
+    Print("MTX record names:\n");
+    Print(RecNames(MTX), "\n");
+
+    Print("\nSpecific MTX tools:\n");
+    Print("IsBound(MTX.CompositionFactors) = ",
+          IsBound(MTX.CompositionFactors), "\n");
+    Print("IsBound(MTX.BasesCompositionSeries) = ",
+          IsBound(MTX.BasesCompositionSeries), "\n");
+    Print("IsBound(MTX.BasisCompositionSeries) = ",
+          IsBound(MTX.BasisCompositionSeries), "\n");
+    Print("IsBound(MTX.CompositionSeries) = ",
+          IsBound(MTX.CompositionSeries), "\n");
+    Print("IsBound(MTX.IsIrreducible) = ",
+          IsBound(MTX.IsIrreducible), "\n");
+    Print("IsBound(MTX.ProperSubmoduleBasis) = ",
+          IsBound(MTX.ProperSubmoduleBasis), "\n");
+    Print("IsBound(MTX.BasesSubmodules) = ",
+          IsBound(MTX.BasesSubmodules), "\n");
+    Print("IsBound(MTX.BasesMinimalSubmodules) = ",
+          IsBound(MTX.BasesMinimalSubmodules), "\n");
+    Print("IsBound(MTX.BasisSocle) = ",
+          IsBound(MTX.BasisSocle), "\n");
+fi;
+
+Print("\nExpected target from Step 62C:\n");
+Print("coeff52_62C = ", coeff52_62C, "\n");
+Print("coeffEnd26_62C = ", coeffEnd26_62C, "\n");
+
+############################################################
+# STEP 62E:
+# BUILD THE 676-DIMENSIONAL END(V26) MODULE
+############################################################
+
+Print("\n------------------------------------------------------------\n");
+Print("STEP 62E: BUILD AND DECOMPOSE END(V26)\n");
+Print("------------------------------------------------------------\n");
+
+F62E := GF(7);;
+D62E := 26;;
+EndDim62E := D62E * D62E;;
+
+Print("V26 dimension = ", D62E, "\n");
+Print("End(V26) dimension = ", EndDim62E, "\n");
+
+SignedGF7_62E := function(x)
+    local n;
+    for n in [-3..3] do
+        if x = n * One(F62E) then
+            return n;
+        fi;
+    od;
+    return x;
+end;;
+
+TraceMat62E := function(A)
+    local s, i, d;
+    d := Length(A);
+    s := Zero(F62E);
+
+    for i in [1..d] do
+        s := s + A[i][i];
+    od;
+
+    return s;
+end;;
+
+TraceSigned62E := function(A)
+    return SignedGF7_62E(TraceMat62E(A));
+end;;
+
+EndActionMatrix62E := function(A)
+    local Ainv, rows, i, j, p, q, row;
+
+    Ainv := A^-1;
+    rows := [];
+
+    for i in [1..D62E] do
+        for j in [1..D62E] do
+
+            row := [];
+
+            for p in [1..D62E] do
+                for q in [1..D62E] do
+                    Add(row, Ainv[p][i] * A[j][q]);
+                od;
+            od;
+
+            Add(rows, row);
+
+        od;
+    od;
+
+    return rows;
+end;;
+
+Print("\nBuilding conjugation matrix for g26...\n");
+EndG62E := EndActionMatrix62E(g26_62);;
+Print("  done. Dimension = ", Length(EndG62E), "\n");
+
+Print("Building conjugation matrix for f26...\n");
+EndF62E := EndActionMatrix62E(f26_62);;
+Print("  done. Dimension = ", Length(EndF62E), "\n");
+
+Print("Building conjugation matrix for t26...\n");
+EndT62E := EndActionMatrix62E(t26_62);;
+Print("  done. Dimension = ", Length(EndT62E), "\n");
+
+Print("\nOrder checks on End(V26) action:\n");
+Print("  Order(EndG62E) = ", Order(EndG62E), "\n");
+Print("  Order(EndF62E) = ", Order(EndF62E), "\n");
+Print("  Order(EndT62E) = ", Order(EndT62E), "\n");
+Print("  Order(EndG62E*EndT62E) = ", Order(EndG62E*EndT62E), "\n");
+
+EndProfile62E := [
+    TraceSigned62E(EndG62E),
+    TraceSigned62E(EndF62E),
+    TraceSigned62E(EndF62E^2),
+    TraceSigned62E(EndF62E^3),
+    TraceSigned62E(EndT62E),
+    TraceSigned62E(EndG62E*EndT62E)
+];;
+
+Print("End(V26) matrix profile [g,f,f^2,f^3,t,g*t] = ",
+      EndProfile62E, "\n");
+
+Print("\nCreating MTX/GModule for End(V26)...\n");
+
+MEnd62E := GModuleByMats([EndG62E, EndF62E, EndT62E], F62E);;
+
+Print("Created MEnd62E.\n");
+Print("MTX.Dimension(MEnd62E) = ", MTX.Dimension(MEnd62E), "\n");
+Print("MTX.Field(MEnd62E) = ", MTX.Field(MEnd62E), "\n");
+
+Print("\nComputing MTX.CompositionFactors(MEnd62E)...\n");
+Print("This may take a little while.\n");
+
+Factors62E := MTX.CompositionFactors(MEnd62E);;
+
+Print("Done.\n");
+Print("Number of composition factors = ", Length(Factors62E), "\n");
+
+FactorProfile62E := function(M)
+    local gens, A, B, C;
+
+    gens := MTX.Generators(M);
+
+    A := gens[1];
+    B := gens[2];
+    C := gens[3];
+
+    return [
+        MTX.Dimension(M),
+        TraceSigned62E(A),
+        TraceSigned62E(B),
+        TraceSigned62E(B^2),
+        TraceSigned62E(B^3),
+        TraceSigned62E(C),
+        TraceSigned62E(A*C)
+    ];
+end;;
+
+ProfilesFactors62E := [];;
+
+Print("\nComposition factor profiles:\n");
+Print("Format: [dim, Tr(g), Tr(f), Tr(f^2), Tr(f^3), Tr(t), Tr(g*t)]\n");
+
+for i62 in [1..Length(Factors62E)] do
+    prof62E := FactorProfile62E(Factors62E[i62]);;
+    Add(ProfilesFactors62E, prof62E);
+    Print("  factor #", i62, " profile = ", prof62E, "\n");
+od;
+
+ProfileSummary62E := [];;
+
+AddToProfileSummary62E := function(prof)
+    local r;
+
+    for r in ProfileSummary62E do
+        if r.profile = prof then
+            r.count := r.count + 1;
+            return true;
+        fi;
+    od;
+
+    Add(ProfileSummary62E, rec(profile := prof, count := 1));
+    return true;
+end;;
+
+for prof62E in ProfilesFactors62E do
+    AddToProfileSummary62E(prof62E);;
+od;
+
+Print("\nProfile summary:\n");
+
+for i62 in [1..Length(ProfileSummary62E)] do
+    Print("  count ", ProfileSummary62E[i62].count,
+          " : ", ProfileSummary62E[i62].profile, "\n");
+od;
+
+Target12Profile62E := [12, -1, 0, 0, 0, 0, 0];;
+Target14Profile62E := [14, 1, 1, -1, -2, -2, -1];;
+Other14AProfile62E := [14, 1, -1, -1, 2, 2, -1];;
+Other14BProfile62E := [14, 1, -2, 2, -2, -2, 2];;
+TrivialProfile62E := [1, 1, 1, 1, 1, 1, 1];;
+
+CountTarget12_62E := Length(Filtered(
+    ProfilesFactors62E,
+    x -> x = Target12Profile62E
+));;
+
+CountTarget14_62E := Length(Filtered(
+    ProfilesFactors62E,
+    x -> x = Target14Profile62E
+));;
+
+CountOther14A_62E := Length(Filtered(
+    ProfilesFactors62E,
+    x -> x = Other14AProfile62E
+));;
+
+CountOther14B_62E := Length(Filtered(
+    ProfilesFactors62E,
+    x -> x = Other14BProfile62E
+));;
+
+CountTrivial_62E := Length(Filtered(
+    ProfilesFactors62E,
+    x -> x = TrivialProfile62E
+));;
+
+Print("\nComposition factor counts:\n");
+Print("  trivial 1D count = ", CountTrivial_62E, "\n");
+Print("  target 12 count = ", CountTarget12_62E, "\n");
+Print("  target 14 count = ", CountTarget14_62E, "\n");
+Print("  other 14A count = ", CountOther14A_62E, "\n");
+Print("  other 14B count = ", CountOther14B_62E, "\n");
+
+TotalDimCheck62E :=
+    CountTrivial_62E * 1
+    + CountTarget12_62E * 12
+    + CountTarget14_62E * 14
+    + CountOther14A_62E * 14
+    + CountOther14B_62E * 14;;
+
+Print("\nDimension check from counted factors = ", TotalDimCheck62E, "\n");
+
+if CountTarget12_62E >= 2 and CountTarget14_62E >= 2 then
+    Print("\nConclusion:\n");
+    Print("  YES: End(V26) contains enough actual MTX composition factors\n");
+    Print("  for V52 = 2*12 + 2*14.\n");
+else
+    Print("\nConclusion:\n");
+    Print("  Not enough target factors were counted.\n");
+fi;
+
+############################################################
+# STEP 62E-CS:
+# COMPOSITION-SERIES BASES
+############################################################
+
+if RUN_BASES_CS62 then
+
+Print("\n------------------------------------------------------------\n");
+Print("STEP 62E-CS: COMPOSITION-SERIES BASES\n");
+Print("------------------------------------------------------------\n");
+
+Print("Computing MTX.BasesCompositionSeries(MEnd62E)...\n");
+
+BasesCS62E := MTX.BasesCompositionSeries(MEnd62E);;
+
+Print("Done.\n");
+
+CSDims62E := List(BasesCS62E, B -> Length(B));;
+
+Print("Length(BasesCS62E) = ", Length(BasesCS62E), "\n");
+Print("Composition-series basis dimensions = ", CSDims62E, "\n");
+
+FactorDimsFromCS62E := [];;
+
+if Length(CSDims62E) >= 2 then
+    for i62 in [2..Length(CSDims62E)] do
+        Add(FactorDimsFromCS62E, CSDims62E[i62] - CSDims62E[i62-1]);
+    od;
+fi;
+
+Print("Factor dimensions from series = ", FactorDimsFromCS62E, "\n");
+
+fi;
+
+############################################################
+# STEP 62F:
+# FIND 52-DIMENSIONAL COMPOSITION-SERIES WINDOWS
+############################################################
+
+Print("\n------------------------------------------------------------\n");
+Print("STEP 62F: FIND 52-DIMENSIONAL WINDOWS\n");
+Print("------------------------------------------------------------\n");
+
+if not IsBound(FactorDimsFromCS62E) then
+    Error("FactorDimsFromCS62E is not bound. Need RUN_BASES_CS62 := true.");
+fi;
+
+Windows52_62F := [];;
+
+for a62F in [1..Length(FactorDimsFromCS62E)] do
+    s62F := 0;;
+    dims62F := [];;
+    for b62F in [a62F..Length(FactorDimsFromCS62E)] do
+        s62F := s62F + FactorDimsFromCS62E[b62F];;
+        Add(dims62F, FactorDimsFromCS62E[b62F]);;
+
+        if s62F = 52 then
+            if Length(Filtered(dims62F, x -> x = 12)) = 2
+               and Length(Filtered(dims62F, x -> x = 14)) = 2 then
+                Add(Windows52_62F,
+                    rec(start := a62F, finish := b62F, dims := ShallowCopy(dims62F)));;
+            fi;;
+        fi;;
+
+        if s62F >= 52 then
+            break;
+        fi;;
+    od;;
+od;;
+
+Print("Number of 52-dimensional windows with shape 12+12+14+14 = ",
+      Length(Windows52_62F), "\n");
+
+for i62 in [1..Length(Windows52_62F)] do
+    Print("window ", i62,
+          ": factors ", Windows52_62F[i62].start,
+          " to ", Windows52_62F[i62].finish,
+          " dims = ", Windows52_62F[i62].dims, "\n");
+od;
+
+if Length(Windows52_62F) = 0 then
+    Print("No 52-dimensional composition-series section of shape 12+12+14+14 was found.\n");
+else
+    Print("These are possible V52 subquotient positions inside End(V26).\n");
+    Print("Next: compute induced action and compare traces.\n");
+fi;
+
+############################################################
+# STEP 62G:
+# TRACE TEST THE 52-DIMENSIONAL WINDOWS
+############################################################
+
+Print("\n------------------------------------------------------------\n");
+Print("STEP 62G: TRACE TEST 52-DIMENSIONAL WINDOWS\n");
+Print("------------------------------------------------------------\n");
+
+RankRows62G := function(rows)
+    if Length(rows) = 0 then
+        return 0;
+    fi;
+    return RankMat(rows);
+end;;
+
+ExtendLowerToUpper62G := function(L, U)
+    local B, Q, r, oldrank, newrank;
+
+    B := ShallowCopy(L);
+    Q := [];
+
+    for r in U do
+        oldrank := RankRows62G(B);
+        Add(B, r);
+        newrank := RankRows62G(B);
+
+        if newrank > oldrank then
+            Add(Q, r);
+        else
+            Remove(B, Length(B));
+        fi;
+    od;
+
+    return rec(full := B, quotient := Q);
+end;;
+
+InducedQuotientAction62G := function(fullbasis, lowerdim, Gen)
+    local n, q, Act, i, v, coeffs, row, j;
+
+    n := Length(fullbasis);
+    q := n - lowerdim;
+    Act := [];
+
+    for i in [lowerdim + 1 .. n] do
+        v := fullbasis[i] * Gen;
+        coeffs := SolutionMat(fullbasis, v);
+
+        if coeffs = fail then
+            Error("SolutionMat failed in quotient action.");
+        fi;
+
+        row := [];
+
+        for j in [lowerdim + 1 .. n] do
+            Add(row, coeffs[j]);
+        od;
+
+        Add(Act, row);
+    od;
+
+    return Act;
+end;;
+
+# Signed integer target:
+# [dim, Tr(g), Tr(f), Tr(f^2), Tr(f^3), Tr(t), Tr(g*t)]
+TargetWindowProfile62G := [52, 0, 2, -2, -4, -4, -2];;
+
+WindowResults62G := [];;
+
+for wi62G in [1..Length(Windows52_62F)] do
+
+    w62G := Windows52_62F[wi62G];;
+
+    lowerIndex62G := w62G.start;;
+    upperIndex62G := w62G.finish + 1;;
+
+    lowerBasis62G := BasesCS62E[lowerIndex62G];;
+    upperBasis62G := BasesCS62E[upperIndex62G];;
+
+    ext62G := ExtendLowerToUpper62G(lowerBasis62G, upperBasis62G);;
+
+    lowerdim62G := Length(lowerBasis62G);;
+    fulldim62G := Length(ext62G.full);;
+    quotdim62G := fulldim62G - lowerdim62G;;
+
+    Print("\nWindow ", wi62G, "\n");
+    Print("  factors = ", w62G.start, " to ", w62G.finish, "\n");
+    Print("  dims = ", w62G.dims, "\n");
+    Print("  lower dim = ", lowerdim62G, "\n");
+    Print("  upper dim = ", Length(upperBasis62G), "\n");
+    Print("  quotient dim = ", quotdim62G, "\n");
+
+    if quotdim62G = 52 then
+
+        AG62G := InducedQuotientAction62G(ext62G.full, lowerdim62G, EndG62E);;
+        AF62G := InducedQuotientAction62G(ext62G.full, lowerdim62G, EndF62E);;
+        AT62G := InducedQuotientAction62G(ext62G.full, lowerdim62G, EndT62E);;
+
+        prof62G := [
+            52,
+            TraceSigned62E(AG62G),
+            TraceSigned62E(AF62G),
+            TraceSigned62E(AF62G^2),
+            TraceSigned62E(AF62G^3),
+            TraceSigned62E(AT62G),
+            TraceSigned62E(AG62G*AT62G)
+        ];;
+
+        Print("  profile = ", prof62G, "\n");
+        Print("  target? ", prof62G = TargetWindowProfile62G, "\n");
+        Print("  orders = [",
+              Order(AG62G), ", ",
+              Order(AF62G), ", ",
+              Order(AT62G), ", ",
+              Order(AG62G*AT62G), "]\n");
+
+        Add(WindowResults62G, rec(
+            index := wi62G,
+            start := w62G.start,
+            finish := w62G.finish,
+            dims := w62G.dims,
+            profile := prof62G,
+            isTarget := prof62G = TargetWindowProfile62G
+        ));;
+
+    else
+        Print("  skipped because quotient dimension is not 52.\n");
+    fi;;
+
+od;;
+
+GoodWindows62G := Filtered(WindowResults62G, r -> r.isTarget);;
+
+Print("\nSTEP 62G FINAL REPORT\n");
+Print("Number of 52-dimensional windows tested = ", Length(WindowResults62G), "\n");
+Print("Number with target V52 profile = ", Length(GoodWindows62G), "\n");
+
+for i62 in [1..Length(WindowResults62G)] do
+    Print("window ", WindowResults62G[i62].index,
+          " profile = ", WindowResults62G[i62].profile, "\n");
+od;
+
+if Length(GoodWindows62G) > 0 then
+    Print("\nGOOD: target V52-profile subquotient windows found.\n");
+    for i62 in [1..Length(GoodWindows62G)] do
+        Print("  good window ", GoodWindows62G[i62].index,
+              ": factors ", GoodWindows62G[i62].start,
+              " to ", GoodWindows62G[i62].finish, "\n");
+    od;
+else
+    Print("\nNo contiguous composition-series window had exactly the target V52 profile.\n");
+fi;
+
+############################################################
+# STEP 62H:
+# SEARCH ACTUAL SUBMODULES / SOCLE INSIDE End(V26)
+############################################################
+
+Print("\n------------------------------------------------------------\n");
+Print("STEP 62H: ACTUAL SUBMODULE / SOCLE SEARCH\n");
+Print("------------------------------------------------------------\n");
+
+SubAction62H := function(B, Gen)
+    local Act, v, coeffs, row, i, j;
+
+    Act := [];
+
+    for i in [1..Length(B)] do
+        v := B[i] * Gen;
+        coeffs := SolutionMat(B, v);
+
+        if coeffs = fail then
+            Error("SubAction62H failed: vector not in supplied basis span.");
+        fi;
+
+        row := [];
+
+        for j in [1..Length(B)] do
+            Add(row, coeffs[j]);
+        od;
+
+        Add(Act, row);
+    od;
+
+    return Act;
+end;;
+
+ProfileOnBasis62H := function(B)
+    local A, F, T;
+
+    if Length(B) = 0 then
+        return [0,0,0,0,0,0,0];
+    fi;
+
+    A := SubAction62H(B, EndG62E);
+    F := SubAction62H(B, EndF62E);
+    T := SubAction62H(B, EndT62E);
+
+    return [
+        Length(B),
+        TraceSigned62E(A),
+        TraceSigned62E(F),
+        TraceSigned62E(F^2),
+        TraceSigned62E(F^3),
+        TraceSigned62E(T),
+        TraceSigned62E(A*T)
+    ];
+end;;
+
+# GF(7) display version of target:
+# -4 is printed/sign-normalised as 3 if using raw GF(7), but ProfileOnBasis62H
+# uses signed TraceSigned62E, so target is the signed integer profile.
+TargetProfile62H := [52, 0, 2, -2, -4, -4, -2];;
+
+Print("Target signed profile = ", TargetProfile62H, "\n");
+
+BasesMin62H := [];;
+MinProfiles62H := [];;
+
+if RUN_MINIMAL_SUBMODULES62 then
+
+    if IsBound(MTX) and IsBound(MTX.BasesMinimalSubmodules) then
+
+        Print("\nComputing MTX.BasesMinimalSubmodules(MEnd62E)...\n");
+        Print("This can be heavy. On a slow machine it may look stuck.\n");
+
+        BasesMin62H := MTX.BasesMinimalSubmodules(MEnd62E);;
+
+        Print("Done.\n");
+        Print("Number of minimal submodules = ", Length(BasesMin62H), "\n");
+
+        for i62 in [1..Length(BasesMin62H)] do
+            p62H := ProfileOnBasis62H(BasesMin62H[i62]);;
+            Add(MinProfiles62H, p62H);
+            Print("minimal submodule ", i62, " profile = ", p62H, "\n");
+        od;
+
+    else
+        Print("MTX.BasesMinimalSubmodules is not available. Skipping minimal-submodule stage.\n");
+    fi;
+
+else
+    Print("RUN_MINIMAL_SUBMODULES62 is false. Skipping minimal-submodule stage.\n");
+fi;
+
+SocleBasis62H := [];;
+SocleProfile62H := fail;;
+
+if RUN_SOCLE62 then
+
+    if IsBound(MTX) and IsBound(MTX.BasisSocle) then
+
+        Print("\nComputing MTX.BasisSocle(MEnd62E)...\n");
+
+        SocleBasis62H := MTX.BasisSocle(MEnd62E);;
+
+        Print("Done.\n");
+
+        SocleProfile62H := ProfileOnBasis62H(SocleBasis62H);;
+
+        Print("Socle dimension = ", Length(SocleBasis62H), "\n");
+        Print("Socle profile = ", SocleProfile62H, "\n");
+        Print("Socle is target V52? ", SocleProfile62H = TargetProfile62H, "\n");
+
+    else
+        Print("MTX.BasisSocle is not available. Skipping socle stage.\n");
+    fi;
+
+else
+    Print("RUN_SOCLE62 is false. Skipping socle stage.\n");
+fi;
+
+GoodSub52_62H := [];;
+
+if RUN_ALL_SUBMODULES62 then
+
+    if IsBound(MTX) and IsBound(MTX.BasesSubmodules) then
+
+        Print("\nComputing MTX.BasesSubmodules(MEnd62E)...\n");
+        Print("This may be very heavy.\n");
+
+        BasesSub62H := MTX.BasesSubmodules(MEnd62E);;
+
+        Print("Done.\n");
+        Print("Number of submodules returned = ", Length(BasesSub62H), "\n");
+
+        for i62 in [1..Length(BasesSub62H)] do
+
+            d62H := Length(BasesSub62H[i62]);;
+
+            if d62H = 52 then
+                p62H := ProfileOnBasis62H(BasesSub62H[i62]);;
+                Print("52-dimensional submodule ", i62,
+                      " profile = ", p62H, "\n");
+
+                if p62H = TargetProfile62H then
+                    Add(GoodSub52_62H,
+                        rec(index := i62,
+                            basis := BasesSub62H[i62],
+                            profile := p62H));;
+                    Print("  FOUND TARGET 52-DIMENSIONAL SUBMODULE.\n");
+                fi;;
+            fi;;
+
+        od;;
+
+        Print("Number of target 52-dimensional submodules found = ",
+              Length(GoodSub52_62H), "\n");
+
+    else
+        Print("MTX.BasesSubmodules is not available. Skipping all-submodules stage.\n");
+    fi;
+
+else
+    Print("\nRUN_ALL_SUBMODULES62 is false. Skipping the very heavy all-submodules stage.\n");
+    Print("To run it later, set RUN_ALL_SUBMODULES62 := true and rerun Step 62H only.\n");
+fi;
+
+############################################################
+# FINAL REPORT
+############################################################
+
+Print("\n============================================================\n");
+Print("STEP 62 ALL-IN-ONE FINAL REPORT\n");
+Print("============================================================\n");
+
+Print("\nAbstract Walton triple:\n");
+Print("  |H62| = ", Size(H62), "\n");
+Print("  Order(g62) = ", Order(g62), "\n");
+Print("  Order(f62) = ", Order(f62), "\n");
+Print("  |B62| = ", Size(B62), "\n");
+Print("  exact-inverting external t count = ", Length(ExactExternalT62), "\n");
+Print("  chosen Order(t62) = ", Order(t62), "\n");
+Print("  chosen Order(g62*t62) = ", Order(g62*t62), "\n");
+Print("  |<g62,f62,t62>| = ", Size(Group(g62,f62,t62)), "\n");
+
+Print("\nV26 Walton model:\n");
+Print("  chosen V12 record = #", target12Index62, "\n");
+Print("  chosen V14 record = #", target14Index62, "\n");
+Print("  |<g26,f26>| = ", Size(B26_62), "\n");
+Print("  |<g26,f26,t26>| = ", Size(H26_62), "\n");
+Print("  f26^t26 = f26^-1 ? ", f26_62^t26_62 = f26_62^-1, "\n");
+Print("  Order(g26*t26) = ", Order(g26_62*t26_62), "\n");
+Print("  V26 profile = ", V26Profile62C, "\n");
+
+Print("\nCharacter bridge:\n");
+Print("  V26 Brauer character = ", chi26_62C, "\n");
+Print("  target V52 Brauer character = ", chi52target_62C, "\n");
+Print("  target V52 coefficients = ", coeff52_62C, "\n");
+Print("  End(V26) Brauer character = ", chiEnd26_62C, "\n");
+Print("  End(V26) coefficients = ", coeffEnd26_62C, "\n");
+Print("  Target V52 fits inside End(V26) by multiplicity? ",
+      CanFitTarget52_62C, "\n");
+
+Print("\nEnd(V26) MTX decomposition:\n");
+Print("  End(V26) dimension = ", EndDim62E, "\n");
+Print("  End(V26) matrix profile = ", EndProfile62E, "\n");
+Print("  number of composition factors = ", Length(Factors62E), "\n");
+Print("  trivial 1D count = ", CountTrivial_62E, "\n");
+Print("  target 12 count = ", CountTarget12_62E, "\n");
+Print("  target 14 count = ", CountTarget14_62E, "\n");
+Print("  other 14A count = ", CountOther14A_62E, "\n");
+Print("  other 14B count = ", CountOther14B_62E, "\n");
+Print("  counted dimension check = ", TotalDimCheck62E, "\n");
+
+if IsBound(CSDims62E) then
+    Print("\nComposition series:\n");
+    Print("  basis dimensions = ", CSDims62E, "\n");
+    Print("  factor dimensions = ", FactorDimsFromCS62E, "\n");
+fi;
+
+Print("\n52-dimensional window search:\n");
+Print("  windows of shape 12+12+14+14 = ", Length(Windows52_62F), "\n");
+Print("  windows trace-tested = ", Length(WindowResults62G), "\n");
+Print("  target-profile windows found = ", Length(GoodWindows62G), "\n");
+
+for i62 in [1..Length(WindowResults62G)] do
+    Print("  window ", WindowResults62G[i62].index,
+          " factors ", WindowResults62G[i62].start,
+          "-", WindowResults62G[i62].finish,
+          " profile = ", WindowResults62G[i62].profile, "\n");
+od;
+
+Print("\nActual submodule / socle stage:\n");
+Print("  minimal submodules tested = ", Length(BasesMin62H), "\n");
+
+if SocleProfile62H = fail then
+    Print("  socle profile = fail/not computed\n");
+else
+    Print("  socle profile = ", SocleProfile62H, "\n");
+fi;
+
+Print("  target 52-dimensional submodules found by all-submodules stage = ",
+      Length(GoodSub52_62H), "\n");
+
+Print("\nInterpretation:\n");
+
+if Length(GoodWindows62G) > 0 then
+    Print("  GOOD: at least one contiguous 52-dimensional composition-series window\n");
+    Print("  has the target V52 profile.\n");
+else
+    Print("  No contiguous 52-dimensional composition-series window had exactly\n");
+    Print("  the target V52 profile. This matches the previous Step 62G outcome.\n");
+fi;
+
+if Length(GoodSub52_62H) > 0 then
+    Print("  GOOD: an actual target 52-dimensional submodule was found.\n");
+else
+    Print("  No actual target 52-dimensional submodule was found in the stages run.\n");
+    Print("  This does not disprove the F4 connection; it means the target V52 may\n");
+    Print("  be a non-contiguous subquotient/extension combination inside End(V26),\n");
+    Print("  or it may need a more structural projection/homomorphism extraction.\n");
+fi;
+
+Print("============================================================\n");
+
+LogTo();
